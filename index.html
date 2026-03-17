@@ -223,13 +223,13 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
   <div style="background:#161b22;border:1px solid #2a3441;border-radius:12px;padding:24px;width:100%;max-width:480px;">
     <div style="text-align:center;margin-bottom:20px;">
       <div style="font-size:44px;margin-bottom:8px;">⚙️</div>
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:800;letter-spacing:3px;color:#f0a500;">MoldPM</div>
-      <div style="color:#8b949e;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:3px;">v10 · Database Setup</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:800;letter-spacing:3px;color:#f0a500;">Equipment/Maintenance Team</div>
+      <div style="color:#8b949e;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:3px;">v4 · Database Setup</div>
     </div>
     <div style="background:rgba(240,165,0,.07);border:1px solid rgba(240,165,0,.25);border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#8b949e;line-height:1.6;">
       📱 Open via <strong style="color:#f0a500;">https://</strong> (GitHub Pages / Netlify) — not from a local file.
     </div>
-    <div class="step"><div class="step-n">Step 1</div><p>Google Sheet → Extensions → Apps Script → paste <strong style="color:#e6edf3;">MoldPM-AppsScript.js</strong> → Save</p></div>
+    <div class="step"><div class="step-n">Step 1</div><p>Google Sheet → Extensions → Apps Script → paste <strong style="color:#e6edf3;">EOLMaintenanceSystem-AppsScript.js</strong> → Save</p></div>
     <div class="step"><div class="step-n">Step 2</div><p>Run <code>setupSheets</code> → authorise. Then run <code>createDailyTrigger</code></p></div>
     <div class="step"><div class="step-n">Step 3</div><p>Deploy → New Deployment → Web App → Execute as <code>Me</code> | Access <code>Anyone</code> → copy <strong style="color:#f0a500;">/exec URL</strong></p></div>
     <div style="margin-top:16px;margin-bottom:6px;">
@@ -243,7 +243,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
     <div id="setupOk" style="display:none;color:#3fb950;font-size:13px;padding:9px 12px;background:rgba(35,134,54,.1);border-radius:6px;margin-bottom:8px;">✅ Connected!</div>
     <button id="connectBtn" onclick="doConnect()"
       style="display:block;width:100%;padding:17px;margin-top:6px;background:#f0a500;color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:2px;text-transform:uppercase;cursor:pointer;touch-action:manipulation;">
-      🔗 CONNECT TO GOOGLE SHEETS
+      🔗 CONNECT TO DATABASE
     </button>
     <div style="text-align:center;margin-top:10px;font-size:11px;color:#333;">v10.0</div>
   </div>
@@ -252,7 +252,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
 <!-- ══════════════ LOGIN SCREEN ══════════════ -->
 <div id="loginScreen" class="screen" style="display:none;">
   <div class="card">
-    <div class="brand"><span class="ico">⚙️</span><h1>MoldPM</h1><p>Preventive Maintenance System</p></div>
+    <div class="brand"><span class="ico">⚙️</span><h1>EOL Equipment Engineering Team</h1><p>Preventive Maintenance System</p></div>
     <div class="fg"><label>Login As</label>
       <div class="role-row">
         <div class="role-btn" id="btnU" onclick="selRole('user')"><span class="ri">👷</span>User</div>
@@ -269,7 +269,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
       <button class="btn btn-ghost btn-sm" onclick="goSetup()">← Back to Setup</button>
       <span style="font-size:12px;color:var(--tx2);cursor:pointer;padding:4px;" onclick="goSetup()">🔧 Change URL</span>
     </div>
-  </div>
+  </div>  
 </div>
 
 <!-- ══════════════ DEPT SELECT SCREEN ══════════════ -->
@@ -288,7 +288,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
   <div class="topbar">
     <div class="topbar-l">
       <span style="font-size:19px;">⚙️</span>
-      <h2>MoldPM</h2>
+      <h2>EOL Equipment Engineering Team</h2>
       <span class="badge" id="roleBadge">User</span>
       <span class="badge" id="deptBadge" style="background:rgba(31,111,235,.15);color:#58a6ff;border-color:rgba(31,111,235,.3);"></span>
     </div>
