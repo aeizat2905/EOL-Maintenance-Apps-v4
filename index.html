@@ -330,7 +330,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
           </div>
           <button class="btn btn-ghost btn-sm" id="formSwitchBtn" onclick="switchDept()" style="display:none;">🔀 Switch</button>
         </div>
-        <div class="fg"><label>Equipment / ID *</label><select id="fEquip"><option value="">&#8212; Select &#8212;</option></select></div>
+        <div class="fg"><label>Equipment / ID *</label><select id="fEquip"><option value="">— Select —</option></select></div>
         <div class="fg" id="halfWrap" style="display:none;">
           <label>Mold Die Section *</label>
           <div class="half-row">
@@ -453,7 +453,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
       <div class="block" style="padding:0;overflow:hidden;">
         <div onclick="toggleManage('pwd')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:14px 18px;user-select:none;">
           <h3 style="margin:0;padding:0;border:none;">🔐 Admin Password</h3>
-          <span id="marr-pwd" style="color:var(--tx2);font-size:14px;">&#9654;</span>
+          <span id="marr-pwd" style="color:var(--tx2);font-size:14px;">▶</span>
         </div>
         <div id="msec-pwd" style="display:none;padding:0 18px 16px;border-top:1px solid var(--bor);">
           <div style="height:12px;"></div>
@@ -466,7 +466,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
       <div class="block" style="padding:0;overflow:hidden;">
         <div onclick="toggleManage('depts')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:14px 18px;user-select:none;">
           <h3 style="margin:0;padding:0;border:none;">🏭 Departments</h3>
-          <span id="marr-depts" style="color:var(--tx2);font-size:14px;">&#9654;</span>
+          <span id="marr-depts" style="color:var(--tx2);font-size:14px;">▶</span>
         </div>
         <div id="msec-depts" style="display:none;padding:0 18px 16px;border-top:1px solid var(--bor);">
           <div style="height:12px;"></div>
@@ -483,7 +483,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
       <div class="block" style="padding:0;overflow:hidden;">
         <div onclick="toggleManage('pic')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:14px 18px;user-select:none;">
           <h3 style="margin:0;padding:0;border:none;">👷 Person In Charge</h3>
-          <span id="marr-pic" style="color:var(--tx2);font-size:14px;">&#9654;</span>
+          <span id="marr-pic" style="color:var(--tx2);font-size:14px;">▶</span>
         </div>
         <div id="msec-pic" style="display:none;padding:0 18px 16px;border-top:1px solid var(--bor);">
           <div style="height:12px;"></div>
@@ -494,7 +494,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
       <div class="block" style="padding:0;overflow:hidden;">
         <div onclick="toggleManage('types')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:14px 18px;user-select:none;">
           <h3 style="margin:0;padding:0;border:none;">🗂️ Maintenance Types</h3>
-          <span id="marr-types" style="color:var(--tx2);font-size:14px;">&#9654;</span>
+          <span id="marr-types" style="color:var(--tx2);font-size:14px;">▶</span>
         </div>
         <div id="msec-types" style="display:none;padding:0 18px 16px;border-top:1px solid var(--bor);">
           <div style="height:12px;"></div>
@@ -614,6 +614,7 @@ let photoQueue=[], delId=null, cbN=0;
 let selectedHalf=null, editSelectedHalf=null;
 let dashActiveFilter={};
 let dashOpenState={};
+let manageOpenState={};
 
 // ─── JSONP ───────────────────────────────────────────────────
 function jsonp(params,ms){
@@ -987,8 +988,8 @@ function renderDash(){
         <div class="stat${af==='wip'?' af':''}" onclick="dashF('${esc(d.name)}','wip')"><div class="sn" style="color:var(--acc)">${wip}</div><div class="sl">WIP</div></div>
       </div>
       <div onclick="toggleDashRecent('${dkey}')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:8px 0 4px;margin-top:8px;border-top:1px solid var(--bor);user-select:none;">
-        <span style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx2);">&#128336; Recent Activity</span>
-        <span id="dash-arrow-${dkey}" style="color:var(--tx2);font-size:12px;">&#9654;</span>
+        <span style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx2);">🕐 Recent Activity</span>
+        <span id="dash-arrow-${dkey}" style="color:var(--tx2);font-size:12px;">▶</span>
       </div>
       <div id="dash-recent-${dkey}" style="display:none;"></div>
     </div>`;
@@ -1005,7 +1006,14 @@ function toggleDashRecent(dkey){
   const el=document.getElementById('dash-recent-'+dkey);
   const arrow=document.getElementById('dash-arrow-'+dkey);
   if(el)el.style.display=dashOpenState[dkey]===true?'block':'none';
-  if(arrow)arrow.textContent=dashOpenState[dkey]===true?'&#9660;':'&#9654;';
+  if(arrow)arrow.textContent=dashOpenState[dkey]===true?'▼':'▶';
+}
+function toggleManage(key){
+  manageOpenState[key]=manageOpenState[key]===true?false:true;
+  const body=document.getElementById('msec-'+key);
+  const arrow=document.getElementById('marr-'+key);
+  if(body)body.style.display=manageOpenState[key]===true?'block':'none';
+  if(arrow)arrow.textContent=manageOpenState[key]===true?'▼':'▶';
 }
 
 function renderDashRecent(deptName){
@@ -1552,14 +1560,6 @@ async function exportPDF(){
   setTimeout(()=>printReport(),600);
 }
 
-function toggleManage(key){
-  manageOpenState[key]=manageOpenState[key]===true?false:true;
-  const body=document.getElementById('msec-'+key);
-  const arrow=document.getElementById('marr-'+key);
-  if(body)body.style.display=manageOpenState[key]===true?'block':'none';
-  if(arrow)arrow.textContent=manageOpenState[key]===true?'&#9660;':'&#9654;';
-}
-let manageOpenState={};
 function showHalfSelector(show){
   const wrap=document.getElementById('halfWrap');
   if(wrap)wrap.style.display=show?'':'none';
