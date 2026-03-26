@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate">
 <meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">
-<title>EOL Maintenance Record System</title>
+<title>MoldPM Tracker v10</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0d1117;--sur:#161b22;--sur2:#1e2530;--bor:#2a3441;--acc:#f0a500;--acc2:#e05c00;--tx:#e6edf3;--tx2:#8b949e;--red:#da3633;--grn:#238636;--blue:#1f6feb;--r:8px;}
@@ -213,6 +213,10 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
 .half-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;}
 .half-btn{padding:10px 6px;background:var(--sur2);border:2px solid var(--bor);border-radius:var(--r);color:var(--tx2);cursor:pointer;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;transition:all .2s;user-select:none;}
 .half-btn.active{border-color:var(--acc);color:var(--acc);background:rgba(240,165,0,.1);}
+/* PRESS SELECTOR */
+.press-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:4px;}
+.press-btn{padding:10px 4px;background:var(--sur2);border:2px solid var(--bor);border-radius:var(--r);color:var(--tx2);cursor:pointer;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;transition:all .2s;user-select:none;}
+.press-btn.sel{border-color:var(--blue);color:#58a6ff;background:rgba(31,111,235,.1);}
 /* DEPT ICONS mapping */
 </style>
 </head>
@@ -223,13 +227,13 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
   <div style="background:#161b22;border:1px solid #2a3441;border-radius:12px;padding:24px;width:100%;max-width:480px;">
     <div style="text-align:center;margin-bottom:20px;">
       <div style="font-size:44px;margin-bottom:8px;">⚙️</div>
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:800;letter-spacing:3px;color:#f0a500;">EOL Equipment Engineering Team</div>
-      <div style="color:#8b949e;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:3px;">v4 · Database Setup</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:800;letter-spacing:3px;color:#f0a500;">MoldPM</div>
+      <div style="color:#8b949e;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:3px;">v10 · Database Setup</div>
     </div>
     <div style="background:rgba(240,165,0,.07);border:1px solid rgba(240,165,0,.25);border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#8b949e;line-height:1.6;">
       📱 Open via <strong style="color:#f0a500;">https://</strong> (GitHub Pages / Netlify) — not from a local file.
     </div>
-    <div class="step"><div class="step-n">Step 1</div><p>Google Sheet → Extensions → Apps Script → paste <strong style="color:#e6edf3;">EOLMaintenanceSystem-AppsScript.js</strong> → Save</p></div>
+    <div class="step"><div class="step-n">Step 1</div><p>Google Sheet → Extensions → Apps Script → paste <strong style="color:#e6edf3;">MoldPM-AppsScript.js</strong> → Save</p></div>
     <div class="step"><div class="step-n">Step 2</div><p>Run <code>setupSheets</code> → authorise. Then run <code>createDailyTrigger</code></p></div>
     <div class="step"><div class="step-n">Step 3</div><p>Deploy → New Deployment → Web App → Execute as <code>Me</code> | Access <code>Anyone</code> → copy <strong style="color:#f0a500;">/exec URL</strong></p></div>
     <div style="margin-top:16px;margin-bottom:6px;">
@@ -243,7 +247,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
     <div id="setupOk" style="display:none;color:#3fb950;font-size:13px;padding:9px 12px;background:rgba(35,134,54,.1);border-radius:6px;margin-bottom:8px;">✅ Connected!</div>
     <button id="connectBtn" onclick="doConnect()"
       style="display:block;width:100%;padding:17px;margin-top:6px;background:#f0a500;color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:2px;text-transform:uppercase;cursor:pointer;touch-action:manipulation;">
-      🔗 CONNECT TO DATABASE
+      🔗 CONNECT TO GOOGLE SHEETS
     </button>
     <div style="text-align:center;margin-top:10px;font-size:11px;color:#333;">v10.0</div>
   </div>
@@ -252,7 +256,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
 <!-- ══════════════ LOGIN SCREEN ══════════════ -->
 <div id="loginScreen" class="screen" style="display:none;">
   <div class="card">
-    <div class="brand"><span class="ico">⚙️</span><h1>EOL Equipment Engineering Team</h1><p>Preventive Maintenance System</p></div>
+    <div class="brand"><span class="ico">⚙️</span><h1>MoldPM</h1><p>Preventive Maintenance System</p></div>
     <div class="fg"><label>Login As</label>
       <div class="role-row">
         <div class="role-btn" id="btnU" onclick="selRole('user')"><span class="ri">👷</span>User</div>
@@ -269,14 +273,14 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
       <button class="btn btn-ghost btn-sm" onclick="goSetup()">← Back to Setup</button>
       <span style="font-size:12px;color:var(--tx2);cursor:pointer;padding:4px;" onclick="goSetup()">🔧 Change URL</span>
     </div>
-  </div>  
+  </div>
 </div>
 
 <!-- ══════════════ DEPT SELECT SCREEN ══════════════ -->
 <div id="deptScreen" class="screen" style="display:none;">
   <div class="card" style="max-width:580px;">
     <button class="btn btn-ghost btn-sm" onclick="showLogin()" style="margin-bottom:16px;">← Back</button>
-    <div class="brand"><span class="ico">🏭</span><h1>EOL Maintenance Team</h1><p>Select your department</p></div>
+    <div class="brand"><span class="ico">🏭</span><h1>MoldPM</h1><p>Select your department</p></div>
     <div id="deptGrid" class="dept-grid"></div>
     <div id="deptErr" class="errbox" style="margin-top:8px;">⚠️ Please select a department.</div>
     <button class="btn btn-acc btn-full" onclick="confirmDept()" style="margin-top:14px;">▶ Continue</button>
@@ -288,7 +292,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
   <div class="topbar">
     <div class="topbar-l">
       <span style="font-size:19px;">⚙️</span>
-      <h2>EOL Maintenance Record System</h2>
+      <h2>MoldPM</h2>
       <span class="badge" id="roleBadge">User</span>
       <span class="badge" id="deptBadge" style="background:rgba(31,111,235,.15);color:#58a6ff;border-color:rgba(31,111,235,.3);"></span>
     </div>
@@ -331,8 +335,13 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
           <button class="btn btn-ghost btn-sm" id="formSwitchBtn" onclick="switchDept()" style="display:none;">🔀 Switch</button>
         </div>
         <div class="fg"><label>Equipment / ID *</label><select id="fEquip"><option value="">— Select —</option></select></div>
+        <!-- Press selector - shown for hasPresses depts -->
+        <div class="fg" id="pressWrap" style="display:none;">
+          <label>Press * <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--tx2);font-size:11px;">select one or more (max 4)</span></label>
+          <div class="press-grid" id="pressGrid"></div>
+        </div>
         <div class="fg" id="halfWrap" style="display:none;">
-          <label>Mold Die Section *</label>
+          <label>Section *</label>
           <div class="half-row">
             <div class="half-btn" id="halfTop"    onclick="pickHalf('top')">&#11014; Top</div>
             <div class="half-btn" id="halfBottom" onclick="pickHalf('bottom')">&#11015; Bottom</div>
@@ -517,6 +526,11 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
     </div>
     <div class="fg"><label>Person In Charge</label><select id="ePIC"></select></div>
     <div class="fg"><label>Equipment / ID</label><select id="eEquip"></select></div>
+    <!-- Press selector in edit -->
+    <div class="fg" id="ePressWrap" style="display:none;">
+      <label>Press</label>
+      <div class="press-grid" id="ePressGrid"></div>
+    </div>
     <div class="fg" id="eHalfWrap" style="display:none;">
       <label>Section</label>
       <div class="half-row">
@@ -612,6 +626,7 @@ let recs=[], pics=[], types=[], departments=[];
 let curDept=null; // {name, equipment:[], parts:[]}
 let photoQueue=[], delId=null, cbN=0;
 let selectedHalf=null, editSelectedHalf=null;
+let selectedPresses=[], editSelectedPresses=[];
 let dashActiveFilter={};
 let dashOpenState={};
 let manageOpenState={};
@@ -875,7 +890,8 @@ function fillNewForm(){
   document.getElementById('formDeptLabel').textContent=dept?deptIcon(dept.name)+' '+dept.name:'No department selected';
   // Equipment dropdown
   const eEl=document.getElementById('fEquip');
-  eEl.innerHTML='<option value="">— Select equipment —</option>'+(dept?dept.equipment.map(e=>`<option>${esc(e)}</option>`).join(''):'');
+  eEl.innerHTML='<option value="">— Select equipment —</option>'+(dept?dept.equipment.map(e=>`<option value="${esc(equipId(e))}">${esc(equipId(e))}</option>`).join(''):'');
+  eEl.onchange=()=>onEquipChange(dept);
   // PICs & Types
   mkSelPIC('fPIC','— Select PIC —',pics);
   mkSel('fType','— Select type —',types);
@@ -883,6 +899,7 @@ function fillNewForm(){
 
   renderChips('partsGrid',dept?dept.parts:[],[]);
   showHalfSelector(!!(dept&&dept.name.toLowerCase()==='mold die'));
+  if(!deptHasPresses(dept))showPressSelector([]);
 }
 
 function getEffectiveDept(){
@@ -894,6 +911,13 @@ function getEffectiveDept(){
 
 // ─── SELECTS ──────────────────────────────────────────────────
 function mkSel(id,ph,arr){const el=document.getElementById(id);if(!el)return;el.innerHTML=`<option value="">${ph}</option>`+arr.map(v=>`<option>${esc(v)}</option>`).join('');}
+// Get equipment id from string-or-object
+function equipId(e){return typeof e==='string'?e:e.id||'';}
+// Get presses for an equipment item
+function equipPresses(e){return typeof e==='object'&&e.presses?e.presses:[];}
+// Check if dept uses press selection
+function deptHasPresses(dept){return !!(dept&&dept.hasPresses);}
+
 function mkSelPIC(id,ph,arr){const el=document.getElementById(id);if(!el)return;el.innerHTML='<option value="">'+ph+'</option>'+arr.map(p=>{const n=typeof p==='string'?p:(p.name||'');return'<option value="'+esc(n)+'">'+esc(n)+'</option>';}).join('');}
 
 // ─── CHIPS ────────────────────────────────────────────────────
@@ -941,6 +965,8 @@ async function submitPM(){
   const det  =document.getElementById('fDet').value.trim();
   const parts=getSelChips('partsGrid');
   const eEl  =document.getElementById('formErr');
+  const hasPressesFlag=deptHasPresses(dept);
+  if(hasPressesFlag&&!selectedPresses.length){eEl.textContent='⚠️ Please select at least one press.';eEl.style.display='block';return;}
   const needsHalf=!!(dept&&dept.name.toLowerCase()==='mold die');
   if(needsHalf&&!selectedHalf){eEl.textContent='⚠️ Please select Top, Bottom or Both.';eEl.style.display='block';return;}
   const hLbl=selectedHalf?selectedHalf.charAt(0).toUpperCase()+selectedHalf.slice(1):'';
@@ -951,13 +977,15 @@ async function submitPM(){
   const btn=document.getElementById('subBtn');btn.disabled=true;btn.textContent='⏳ Saving...';sy('sync');
   try{
     const uploaded=await uploadAllPhotos();
-    const r=await jsonp({action:'addRecord',pic,dept:dept.name,equipment:fullEquip,maintenanceType:mtype,
+    const pressesVal=hasPressesFlag?selectedPresses.join(', '):'';
+    const r=await jsonp({action:'addRecord',pic,dept:dept.name,equipment:fullEquip,maintenanceType:mtype,presses:pressesVal,
       dateStart:ds,dateFinish:df||'',details:det,parts:parts.join(', '),photos:JSON.stringify(uploaded)});
     if(r.status==='ok'){
       recs.unshift(r.record);
       ['fEquip','fPIC','fType','fDs','fDf','fDet'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
       document.querySelectorAll('#partsGrid .chip.sel').forEach(c=>c.classList.remove('sel'));
       showHalfSelector(false);
+      showPressSelector([]);
       resetPhotos();sy('ok');toast('✅ PM Record saved!');goSec('recs');
     }else throw new Error(r.message||'Save failed');
   }catch(e){sy('off');toast('❌ '+e.message);}
@@ -1077,7 +1105,7 @@ function rCard(r,mini){
     <div class="rec-hdr">
       <div>
         <div class="rec-id">${esc(r.equipment||'—')}</div>
-        <div class="rec-sub">👷 ${esc(r.pic)}${getPICEmail(r.pic)?' &nbsp;·&nbsp; 📧 '+esc(getPICEmail(r.pic)):''} &nbsp;|&nbsp; 🆔 ${esc(r.id)}</div>
+        <div class="rec-sub">👷 ${esc(r.pic)} &nbsp;|&nbsp; 🆔 ${esc(r.id)}${r.presses?' &nbsp;|&nbsp; <span style="color:#58a6ff;">'+esc(r.presses)+'</span>':''}</div>
       </div>
       <span class="sbadge ${done?'s-ok">✅ Done':'s-wip">🔄 In Progress'}</span>
     </div>
@@ -1130,10 +1158,18 @@ function openEdit(id){
   mkSel('eEquip','— Select —',dept.equipment);
   mkSel('eType','— Select —',types);
   document.getElementById('ePIC').value=r.pic;
-  const hm=r.equipment.match(/^(.+) \((Top|Bottom|Both)\)$/i);
+  // Presses stored separately in r.presses
+  const equipNoPresses=r.equipment;
+  const parsedPresses=r.presses?r.presses.split(', ').map(p=>p.trim()).filter(Boolean):[];
+  const hm=equipNoPresses.match(/^(.+) \((Top|Bottom|Both)\)$/i);
   const baseEquip=hm?hm[1]:r.equipment;
   const existHalf=hm?hm[2].toLowerCase():null;
   document.getElementById('eEquip').value=baseEquip;
+  // Show press selector for press-enabled depts
+  if(deptHasPresses(dept)){
+    const equip2=dept.equipment.find(e=>equipId(e)===baseEquip);
+    showEditPressSelector(equip2?equipPresses(equip2):[],parsedPresses);
+  }else{showEditPressSelector([],[]);}
   showEditHalfSelector(!!(dept&&dept.name&&dept.name.toLowerCase()==='mold die'),existHalf);
   document.getElementById('eType').value=r.maintenanceType;
   document.getElementById('eDs').value=r.dateStart;
@@ -1163,7 +1199,8 @@ async function saveEdit(){
   if(!parts.length){eEl.textContent='⚠️ Select at least one part.';eEl.style.display='block';return;}
   const btn=document.getElementById('saveEditBtn');btn.disabled=true;btn.textContent='Saving...';sy('sync');
   try{
-    const r=await jsonp({action:'editRecord',id,pic,equipment:equip,maintenanceType:mtype,dateStart:ds,dateFinish:df||'',details:det,parts:parts.join(', ')});
+    const pressesVal2=deptHasPresses(deptEdit)?editSelectedPresses.join(', '):'';
+    const r=await jsonp({action:'editRecord',id,pic,equipment:equip,maintenanceType:mtype,dateStart:ds,dateFinish:df||'',details:det,parts:parts.join(', '),presses:pressesVal2});
     if(r.status==='ok'){
       const idx=recs.findIndex(x=>x.id===id);if(idx>=0)recs[idx]={...recs[idx],...r.record};
       closeEdit();sy('ok');toast('✅ Updated!');applyF();renderDash();
@@ -1207,13 +1244,30 @@ function renderDeptManageList(){
       </div>
       <div class="dmc-body" id="dmc-body-${di}">
         <div class="dmc-section">
-          <h5>Equipment / IDs</h5>
+          <h5 style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+            <span>Equipment / IDs</span>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:600;font-size:11px;letter-spacing:1px;color:var(--tx2);text-transform:uppercase;">
+              <input type="checkbox" ${d.hasPresses?'checked':''} onchange="togglePresses(${di},this.checked)"
+                style="width:14px;height:14px;cursor:pointer;accent-color:var(--blue);">
+              Press Selection
+            </label>
+          </h5>
           <div class="add-r">
             <input type="text" id="addEquipIn-${di}" placeholder="e.g. MD-006, HP-05...">
             <button class="btn btn-grn btn-xs" onclick="addEquipment(${di})">+ Add</button>
           </div>
           <div class="mlist" id="equipList-${di}">
-            ${d.equipment.map((e,ei)=>`<div class="mitem"><span>🔧 ${esc(e)}</span><button class="btn btn-red btn-xs" onclick="deleteEquipment(${di},${ei})">Remove</button></div>`).join('')||'<p style="color:var(--tx2);font-size:13px;">None yet.</p>'}
+            ${d.equipment.length?d.equipment.map((e,ei)=>{
+              const eId=equipId(e);
+              const presses=equipPresses(e);
+              let pressHtml='';
+              if(d.hasPresses){
+                const pressTags=presses.map((p,pi)=>`<span style="background:rgba(31,111,235,.1);color:#58a6ff;border:1px solid rgba(31,111,235,.2);border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">${esc(p)} <span style="cursor:pointer;color:var(--red);" onclick="deletePressItem(${di},${ei},${pi})">&#x2715;</span></span>`).join('');
+                const addRow=presses.length<4?`<div style="display:flex;gap:5px;margin-top:5px;"><input type="text" id="addPressIn-${di}-${ei}" placeholder="e.g. Press 5" style="flex:1;padding:5px 8px;background:var(--bg);border:1px solid var(--bor);border-radius:var(--r);color:var(--tx);font-size:13px;"><button class="btn btn-blue btn-xs" onclick="addPressItem(${di},${ei})">+ Press</button></div>`:'<p style="font-size:11px;color:var(--tx2);margin-top:4px;">Max 4 presses.</p>';
+                pressHtml=`<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bor);"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--tx2);margin-bottom:5px;">Presses (${presses.length}/4)</div><div style="display:flex;flex-wrap:wrap;gap:5px;">${pressTags}</div>${addRow}</div>`;
+              }
+              return`<div class="mitem" style="flex-direction:column;align-items:stretch;gap:4px;"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span>🔧 ${esc(eId)}</span><button class="btn btn-red btn-xs" onclick="deleteEquipment(${di},${ei})">Remove</button></div>${pressHtml}</div>`;
+            }).join(''):'<p style="color:var(--tx2);font-size:13px;">None yet.</p>'}
           </div>
         </div>
         <div class="dmc-section">
@@ -1272,6 +1326,35 @@ async function deleteDeptPart(di,pi){
   sy('sync');
   try{const r=await jsonp({action:'deleteDeptPart',deptName:departments[di].name,part:departments[di].parts[pi]});if(r.status==='ok'){departments=r.departments;renderDeptManageList();sy('ok');toast('🗑️ Removed.');}else toast('⚠️ '+(r.message||'Failed'));}
   catch(e){sy('off');toast('❌ '+e.message);}
+}
+
+async function togglePresses(di,checked){
+  sy('sync');
+  try{
+    const r=await jsonp({action:'setDeptPresses',deptName:departments[di].name,hasPresses:checked?'1':''});
+    if(r.status==='ok'){departments=r.departments;renderDeptManageList();sy('ok');toast(checked?'Press selection enabled!':'Press selection disabled');}
+    else toast('⚠️ '+(r.message||'Failed'));
+  }catch(err){sy('off');toast('❌ '+err.message);}
+}
+async function addPressItem(di,ei){
+  const inId='addPressIn-'+di+'-'+ei;
+  const v=document.getElementById(inId)?.value.trim();
+  if(!v)return;
+  sy('sync');
+  try{
+    const r=await jsonp({action:'addPress',deptName:departments[di].name,equipId:equipId(departments[di].equipment[ei]),press:v});
+    if(r.status==='ok'){departments=r.departments;renderDeptManageList();sy('ok');toast('✅ Press added!');}
+    else toast('⚠️ '+(r.message||'Failed'));
+  }catch(err){sy('off');toast('❌ '+err.message);}
+}
+async function deletePressItem(di,ei,pi){
+  sy('sync');
+  try{
+    const e=departments[di].equipment[ei];
+    const r=await jsonp({action:'deletePress',deptName:departments[di].name,equipId:equipId(e),press:equipPresses(e)[pi]});
+    if(r.status==='ok'){departments=r.departments;renderDeptManageList();sy('ok');toast('🗑️ Press removed.');}
+    else toast('⚠️ '+(r.message||'Failed'));
+  }catch(err){sy('off');toast('❌ '+err.message);}
 }
 
 // Global lists
@@ -1505,6 +1588,7 @@ function renderReport(){
         <td>${r.dateFinish?fd(r.dateFinish):'<span style="color:var(--tx2);">—</span>'}</td>
         <td>${esc(r.pic)}</td>
         <td>${esc(r.maintenanceType)}</td>
+        <td>${r.presses?esc(r.presses):''}</td>
         <td style="max-width:200px;font-size:12px;">${esc(r.details)}</td>
         <td style="max-width:150px;">${ptags||'<span style="color:var(--tx2);font-size:11px;">—</span>'}</td>
         <td><span class="sbadge ${r.status==='completed'?'s-ok">✅ Done':'s-wip">🔄 WIP'}</span></td>
@@ -1525,7 +1609,7 @@ function renderReport(){
         <table class="rpt-table">
           <thead><tr>
             <th>Date Start</th><th>Date Finish</th><th>PIC</th>
-            <th>Maint. Type</th><th>Findings</th><th>Parts Changed</th><th>Status</th>
+            <th>Maint. Type</th><th>Press</th><th>Findings</th><th>Parts Changed</th><th>Status</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -1558,6 +1642,43 @@ function printReport(){
 async function exportPDF(){
   toast('🖨️ Use Print → Save as PDF in the print dialog.');
   setTimeout(()=>printReport(),600);
+}
+
+function onEquipChange(dept){
+  const val=document.getElementById('fEquip').value;
+  if(!dept||!deptHasPresses(dept)||!val){showPressSelector([]);return;}
+  const equip=dept.equipment.find(e=>equipId(e)===val);
+  showPressSelector(equip?equipPresses(equip):[]);
+}
+function showPressSelector(presses){
+  const wrap=document.getElementById('pressWrap');
+  const grid=document.getElementById('pressGrid');
+  if(!wrap||!grid)return;
+  if(!presses||!presses.length){wrap.style.display='none';selectedPresses=[];return;}
+  wrap.style.display='';
+  grid.innerHTML=presses.map(p=>`<div class="press-btn" data-press="${esc(p)}" onclick="togglePress(this)">${esc(p)}</div>`).join('');
+  selectedPresses=[];
+}
+function togglePress(btn){
+  const sel=[...document.querySelectorAll('#pressGrid .press-btn.sel')];
+  if(btn.classList.contains('sel')){btn.classList.remove('sel');selectedPresses=sel.filter(b=>b!==btn).map(b=>b.dataset.press);}
+  else if(sel.length>=4){toast('⚠️ Max 4 presses.');return;}
+  else{btn.classList.add('sel');selectedPresses=[...sel,btn].map(b=>b.dataset.press);}
+}
+function showEditPressSelector(presses, selectedArr){
+  const wrap=document.getElementById('ePressWrap');
+  const grid=document.getElementById('ePressGrid');
+  if(!wrap||!grid)return;
+  if(!presses||!presses.length){wrap.style.display='none';editSelectedPresses=[];return;}
+  wrap.style.display='';
+  grid.innerHTML=presses.map(p=>`<div class="press-btn${selectedArr&&selectedArr.includes(p)?' sel':''}" data-press="${esc(p)}" onclick="toggleEditPress(this)">${esc(p)}</div>`).join('');
+  editSelectedPresses=selectedArr||[];
+}
+function toggleEditPress(btn){
+  const sel=[...document.querySelectorAll('#ePressGrid .press-btn.sel')];
+  if(btn.classList.contains('sel')){btn.classList.remove('sel');editSelectedPresses=sel.filter(b=>b!==btn).map(b=>b.dataset.press);}
+  else if(sel.length>=4){toast('⚠️ Max 4 presses.');return;}
+  else{btn.classList.add('sel');editSelectedPresses=[...sel,btn].map(b=>b.dataset.press);}
 }
 
 function showHalfSelector(show){
