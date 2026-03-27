@@ -916,7 +916,13 @@ function equipId(e){return typeof e==='string'?e:e.id||'';}
 // Get presses for an equipment item
 function equipPresses(e){return typeof e==='object'&&e.presses?e.presses:[];}
 // Check if dept uses press selection
-function deptHasPresses(dept){return !!(dept&&dept.hasPresses);}
+function deptHasPresses(dept){
+  if(!dept)return false;
+  // Hardcoded fallback for Transfer Block and Mold Machine
+  // also respects hasPresses flag set by admin for other depts
+  const n=dept.name.toLowerCase();
+  return !!(dept.hasPresses||n==='transfer block'||n==='mold machine');
+}
 
 function mkSelPIC(id,ph,arr){const el=document.getElementById(id);if(!el)return;el.innerHTML='<option value="">'+ph+'</option>'+arr.map(p=>{const n=typeof p==='string'?p:(p.name||'');return'<option value="'+esc(n)+'">'+esc(n)+'</option>';}).join('');}
 
@@ -1168,7 +1174,8 @@ function openEdit(id){
   // Show press selector for press-enabled depts
   if(deptHasPresses(dept)){
     const equip2=dept.equipment.find(e=>equipId(e)===baseEquip);
-    showEditPressSelector(equip2?equipPresses(equip2):[],parsedPresses);
+    const editPresses=equip2?equipPresses(equip2):[];
+    showEditPressSelector(editPresses.length?editPresses:['Press 1','Press 2','Press 3','Press 4'],parsedPresses);
   }else{showEditPressSelector([],[]);}
   showEditHalfSelector(!!(dept&&dept.name&&dept.name.toLowerCase()==='mold die'),existHalf);
   document.getElementById('eType').value=r.maintenanceType;
@@ -1648,7 +1655,9 @@ function onEquipChange(dept){
   const val=document.getElementById('fEquip').value;
   if(!dept||!deptHasPresses(dept)||!val){showPressSelector([]);return;}
   const equip=dept.equipment.find(e=>equipId(e)===val);
-  showPressSelector(equip?equipPresses(equip):[]);
+  const presses=equip?equipPresses(equip):[];
+  // Fallback to default 4 presses if equipment is plain string (old Apps Script)
+  showPressSelector(presses.length?presses:['Press 1','Press 2','Press 3','Press 4']);
 }
 function showPressSelector(presses){
   const wrap=document.getElementById('pressWrap');
