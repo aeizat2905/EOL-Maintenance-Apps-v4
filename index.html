@@ -880,7 +880,13 @@ async function pmLoadFromSheets(typeId){
     // If completely empty (first time), seed with defaults
     if(!pmMolds.length){
       const seeds=PM_SCHED_SEEDS[typeId]||[];
-      if(seeds.length){pmMolds=[...seeds];await pmSaveToSheets(typeId);}
+      if(seeds.length){
+        pmMolds=[...seeds];
+        // Seed each mold atomically on first load
+        for(const mold of pmMolds){
+          try{await jsonp({action:'pmAddMold',typeId,mold:JSON.stringify(mold)},20000);}catch(ex){}
+        }
+      }
     }
     sy('ok');
   }catch(e){
@@ -890,41 +896,81 @@ async function pmLoadFromSheets(typeId){
   }
 }
 
-async function pmSaveToSheets(typeId){
-  if(pmIsSaving)return;
-  pmIsSaving=true;
-  sy('sync','Saving PM data...');
-  const tid=typeId||currentSchedType?.id||'mold-die';
-  const payload={
-    action:'savePMData',
-    typeId:tid,
-    data:JSON.stringify({
-      typeId:tid,
-      molds:pmMolds,
-      history:pmHistory,
-      users:pmUsers
-    })
-  };
+/*
+  pmSave* — atomic JSONP operations.
+  Each sends only the changed object (fits easily in a URL).
+  No POST / no CORS issues.
+*/
+
+// Used after pmDoAddMold()
+async function pmSaveNewMold(mold){
+  const tid=currentSchedType?.id||'mold-die';
+  sy('sync','Saving...');
   try{
-    // POST with JSON body — Apps Script doPost reads e.postData.contents
-    // Apps Script redirects POST to a new URL; redirect:'follow' handles this.
-    const resp=await fetch(APPURL,{
-      method:'POST',
-      redirect:'follow',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body:JSON.stringify(payload)
-    });
-    if(!resp.ok)throw new Error('HTTP '+resp.status);
-    const text=await resp.text();
-    let r;
-    try{r=JSON.parse(text);}catch(ex){throw new Error('Bad response: '+text.slice(0,80));}
-    if(r&&r.status==='ok'){
-      sy('ok');
-    }else throw new Error(r?.message||'Save returned error');
-  }catch(e){
-    sy('off');
-    toast('⚠️ PM save failed: '+e.message);
-  }finally{pmIsSaving=false;}
+    const r=await jsonp({action:'pmAddMold',typeId:tid,mold:JSON.stringify(mold)},20000);
+    if(!r||r.status!=='ok')throw new Error(r?.message||'Failed');
+    sy('ok');
+  }catch(e){sy('off');throw e;}
+}
+
+// Used after pmDoEditMold()
+async function pmSaveUpdatedMold(mold){
+  const tid=currentSchedType?.id||'mold-die';
+  sy('sync','Saving...');
+  try{
+    const r=await jsonp({action:'pmUpdateMold',typeId:tid,mold:JSON.stringify(mold)},20000);
+    if(!r||r.status!=='ok')throw new Error(r?.message||'Failed');
+    sy('ok');
+  }catch(e){sy('off');throw e;}
+}
+
+// Used after pmDeleteMold()
+async function pmSaveDeleteMold(moldId){
+  const tid=currentSchedType?.id||'mold-die';
+  sy('sync','Saving...');
+  try{
+    const r=await jsonp({action:'pmDeleteMold',typeId:tid,moldId:moldId},20000);
+    if(!r||r.status!=='ok')throw new Error(r?.message||'Failed');
+    sy('ok');
+  }catch(e){sy('off');throw e;}
+}
+
+// Used after pmConfirmDone() — saves one history entry
+async function pmSaveHistoryEntry(entry){
+  const tid=currentSchedType?.id||'mold-die';
+  sy('sync','Saving...');
+  try{
+    const r=await jsonp({action:'pmAppendHistory',typeId:tid,entry:JSON.stringify(entry)},20000);
+    if(!r||r.status!=='ok')throw new Error(r?.message||'Failed');
+    sy('ok');
+  }catch(e){sy('off');throw e;}
+}
+
+// Used after pmAddUser()
+async function pmSaveNewUser(user){
+  const tid=currentSchedType?.id||'mold-die';
+  sy('sync','Saving...');
+  try{
+    const r=await jsonp({action:'pmAddUser',typeId:tid,user:JSON.stringify(user)},20000);
+    if(!r||r.status!=='ok')throw new Error(r?.message||'Failed');
+    sy('ok');
+  }catch(e){sy('off');throw e;}
+}
+
+// Used after pmDeleteUser()
+async function pmSaveDeleteUser(name){
+  const tid=currentSchedType?.id||'mold-die';
+  sy('sync','Saving...');
+  try{
+    const r=await jsonp({action:'pmDeleteUser',typeId:tid,name:encodeURIComponent(name)},20000);
+    if(!r||r.status!=='ok')throw new Error(r?.message||'Failed');
+    sy('ok');
+  }catch(e){sy('off');throw e;}
+}
+
+// Legacy alias — kept so any missed call sites don't crash silently
+async function pmSaveToSheets(){
+  sy('ok');
 }
 
 /* ══════════════════════════════════════════════════════
@@ -2030,16 +2076,22 @@ async function pmAddUser(){
   const inp=document.getElementById('pm-new-user');const name=inp.value.trim();
   if(!name){inp.focus();return;}
   if(pmUsers.some(u=>u.name.toLowerCase()===name.toLowerCase())){toast('⚠️ Already exists.');return;}
-  pmUsers.push({name,addedAt:new Date().toLocaleDateString('en-MY')});inp.value='';
-  renderPMUsers();
-  await pmSaveToSheets();
-  toast('✅ Technician added!');
+  const user={name,addedAt:new Date().toLocaleDateString('en-MY')};
+  inp.value='';
+  try{
+    await pmSaveNewUser(user);
+    pmUsers.push(user);
+    renderPMUsers();
+    toast('✅ Technician added!');
+  }catch(e){toast('⚠️ Save failed: '+e.message);}
 }
 async function pmDeleteUser(idx){
   const u=pmUsers[idx];if(!confirm(`Remove "${u.name}"?`))return;
-  pmUsers.splice(idx,1);renderPMUsers();
-  await pmSaveToSheets();
-  toast('🗑️ Removed.');
+  try{
+    await pmSaveDeleteUser(u.name);
+    pmUsers.splice(idx,1);renderPMUsers();
+    toast('🗑️ Removed.');
+  }catch(e){toast('⚠️ Save failed: '+e.message);}
 }
 
 /* PM WEEK TAGS */
@@ -2073,10 +2125,13 @@ function pmOpenAddModal(){pmAddWeekState=[];populatePMWeekSelects();pmRenderWeek
 async function pmDoAddMold(){
   const name=document.getElementById('pmAddName').value.trim();if(!name){toast('⚠️ Enter a Mold Die name.');return;}
   const btn=document.getElementById('pmAddSubmitBtn');btn.disabled=true;btn.textContent='Saving...';
-  pmMolds.push({id:Date.now(),name,group:document.getElementById('pmAddGroup').value.trim(),machine:document.getElementById('pmAddMachine').value.trim(),pmIntervalWeeks:parseInt(document.getElementById('pmAddInterval').value)||null,scheduledWeeks:[...pmAddWeekState]});
-  await pmSaveToSheets();
+  const mold={id:Date.now(),name,group:document.getElementById('pmAddGroup').value.trim(),machine:document.getElementById('pmAddMachine').value.trim(),pmIntervalWeeks:parseInt(document.getElementById('pmAddInterval').value)||null,scheduledWeeks:[...pmAddWeekState]};
+  try{
+    await pmSaveNewMold(mold);
+    pmMolds.push(mold);
+    closeMod('pmAddMoldMod');renderPMMolds();toast('✅ Mold added!');
+  }catch(e){toast('⚠️ Save failed: '+e.message);}
   btn.disabled=false;btn.textContent='Add Mold Die';
-  closeMod('pmAddMoldMod');renderPMMolds();toast('✅ Mold added & saved to Google Sheets!');
 }
 function pmOpenEditModal(id){
   const m=pmMolds.find(x=>x.id===id);if(!m)return;
@@ -2085,17 +2140,23 @@ function pmOpenEditModal(id){
 }
 async function pmDoEditMold(){
   const id=parseInt(document.getElementById('pmEditId').value);const btn=document.getElementById('pmEditSubmitBtn');btn.disabled=true;btn.textContent='Saving...';const intVal=document.getElementById('pmEditInterval').value;
-  pmMolds=pmMolds.map(x=>x.id===id?{...x,name:document.getElementById('pmEditName').value.trim(),group:document.getElementById('pmEditGroup').value.trim(),machine:document.getElementById('pmEditMachine').value.trim(),pmIntervalWeeks:intVal?parseInt(intVal):null,scheduledWeeks:[...pmEditWeekState]}:x);
-  await pmSaveToSheets();
+  const updated=pmMolds.map(x=>x.id===id?{...x,name:document.getElementById('pmEditName').value.trim(),group:document.getElementById('pmEditGroup').value.trim(),machine:document.getElementById('pmEditMachine').value.trim(),pmIntervalWeeks:intVal?parseInt(intVal):null,scheduledWeeks:[...pmEditWeekState]}:x);
+  const mold=updated.find(x=>x.id===id);
+  try{
+    await pmSaveUpdatedMold(mold);
+    pmMolds=updated;
+    closeMod('pmEditMoldMod');renderPMMolds();toast('✅ Saved!');
+  }catch(e){toast('⚠️ Save failed: '+e.message);}
   btn.disabled=false;btn.textContent='Save Changes';
-  closeMod('pmEditMoldMod');renderPMMolds();toast('✅ Saved to Google Sheets!');
 }
 async function pmDeleteMold(id){
   if(!confirm('Delete this mold die?'))return;
-  pmMolds=pmMolds.filter(x=>x.id!==id);
-  await pmSaveToSheets();
-  renderPMMolds();renderPMDashboard();
-  toast('🗑️ Deleted from Google Sheets.');
+  try{
+    await pmSaveDeleteMold(id);
+    pmMolds=pmMolds.filter(x=>x.id!==id);
+    renderPMMolds();renderPMDashboard();
+    toast('🗑️ Deleted.');
+  }catch(e){toast('⚠️ Save failed: '+e.message);}
 }
 
 /* PM MARK DONE MODAL */
@@ -2120,11 +2181,14 @@ async function pmConfirmDone(){
   const dateVal=document.getElementById('pmDoneDate').value,person=document.getElementById('pmDonePerson').value,notes=document.getElementById('pmDoneNotes').value.trim(),wkNumVal=parseInt(document.getElementById('pmDoneSchedWk').value);
   if(!dateVal){toast('⚠️ Please enter the PM date.');return;}if(!person){toast('⚠️ Please select a technician.');return;}if(!wkNumVal){toast('⚠️ Please select the scheduled week.');return;}
   const btn=document.getElementById('pmDoneConfirmBtn');btn.textContent='Saving...';btn.disabled=true;
-  pmHistory.push({moldId:id,moldName:m.name,moldGroup:m.group||'',scheduledWkNum:wkNumVal,fiscalYear:26,fiscalWeek:600+wkNumVal,doneDate:dateVal,doneBy:person||'—',notes:notes||'',recordedAt:new Date().toLocaleDateString('en-MY'),source:'manual'});
-  await pmSaveToSheets();
+  const entry={moldId:id,moldName:m.name,moldGroup:m.group||'',scheduledWkNum:wkNumVal,fiscalYear:26,fiscalWeek:600+wkNumVal,doneDate:dateVal,doneBy:person||'—',notes:notes||'',recordedAt:new Date().toLocaleDateString('en-MY'),source:'manual'};
+  try{
+    await pmSaveHistoryEntry(entry);
+    pmHistory.push(entry);
+    closeMod('pmDoneMod');renderPMDashboard();renderPMMolds();renderPMHistory();
+    toast('✅ PM marked done!');
+  }catch(e){toast('⚠️ Save failed: '+e.message);}
   btn.textContent='✅ Confirm Done';btn.disabled=false;
-  closeMod('pmDoneMod');renderPMDashboard();renderPMMolds();renderPMHistory();
-  toast('✅ PM marked done & saved to Google Sheets!');
 }
 
 /* ══════════════════════════════════════════════════════
