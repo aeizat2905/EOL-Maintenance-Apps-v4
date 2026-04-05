@@ -894,22 +894,32 @@ async function pmSaveToSheets(typeId){
   if(pmIsSaving)return;
   pmIsSaving=true;
   sy('sync','Saving PM data...');
-  try{
-    const payload={
-      typeId:typeId||currentSchedType?.id||'mold-die',
+  const tid=typeId||currentSchedType?.id||'mold-die';
+  const payload={
+    action:'savePMData',
+    typeId:tid,
+    data:JSON.stringify({
+      typeId:tid,
       molds:pmMolds,
       history:pmHistory,
       users:pmUsers
-    };
-    // savePMData expects typeId + data (JSON string)
-    const r=await jsonp({
-      action:'savePMData',
-      typeId:payload.typeId,
-      data:JSON.stringify(payload)
-    },20000);
+    })
+  };
+  try{
+    // POST with JSON body — Apps Script doPost reads e.postData.contents
+    // Apps Script redirects POST to a new URL; redirect:'follow' handles this.
+    const resp=await fetch(APPURL,{
+      method:'POST',
+      redirect:'follow',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify(payload)
+    });
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    const text=await resp.text();
+    let r;
+    try{r=JSON.parse(text);}catch(ex){throw new Error('Bad response: '+text.slice(0,80));}
     if(r&&r.status==='ok'){
       sy('ok');
-      setTimeout(()=>sy('ok'),1500);
     }else throw new Error(r?.message||'Save returned error');
   }catch(e){
     sy('off');
