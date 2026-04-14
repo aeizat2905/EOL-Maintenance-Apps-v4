@@ -247,27 +247,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
 </head>
 <body>
 
-<!-- SCREEN 1: SETUP -->
-<div id="setupScreen" class="screen" style="display:none;">
-  <div class="card" style="max-width:500px;">
-    <div class="brand"><span class="ico">⚙️</span><h1>System Setup</h1><p>Connect to Google Sheets Backend</p></div>
-    <div class="step"><div class="step-n">Step 1</div><p>Google Sheet → Extensions → Apps Script → paste backend script → Save</p></div>
-    <div class="step"><div class="step-n">Step 2</div><p>Run <code>setupSheets</code> → authorise → run <code>createDailyTrigger</code></p></div>
-    <div class="step"><div class="step-n">Step 3</div><p>Deploy → New Web App → Execute as <code>Me</code> | Access <code>Anyone</code> → copy <strong style="color:var(--acc)">/exec URL</strong></p></div>
-    <div style="height:12px;"></div>
-    <div class="fg"><label>Apps Script /exec URL</label>
-      <input type="text" id="urlInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        placeholder="https://script.google.com/macros/s/.../exec"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();doConnect();}">
-    </div>
-    <div id="setupErr" class="errbox"></div>
-    <div id="setupOk" style="display:none;color:#3fb950;font-size:13px;padding:9px 12px;background:rgba(35,134,54,.1);border-radius:6px;margin-bottom:8px;">✅ Connected!</div>
-    <button id="connectBtn" class="btn btn-acc btn-full" onclick="doConnect()">🔗 Connect to Google Sheets</button>
-    <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--tx2);">EOL Maintenance & PM Scheduler v2.0</div>
-  </div>
-</div>
-
-<!-- SCREEN 2: LOGIN -->
+<!-- LOGIN SCREEN (shown directly on load) -->
 <div id="loginScreen" class="screen" style="display:none;">
   <div class="card" style="max-width:460px;">
     <div class="brand">
@@ -288,14 +268,10 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
       <div id="loginErr" class="errbox">❌ Invalid username or password.</div>
       <button class="btn btn-acc btn-full" onclick="doLogin()" style="margin-top:8px;">▶ Continue</button>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
-      <button class="btn btn-ghost btn-sm" onclick="goSetup()">← Back to Setup</button>
-      <span style="font-size:12px;color:var(--tx2);cursor:pointer;" onclick="goSetup()">🔧 Change URL</span>
-    </div>
   </div>
 </div>
 
-<!-- SCREEN 3: MODULE SELECT -->
+<!-- MODULE SELECT SCREEN -->
 <div id="moduleScreen" class="screen" style="display:none;">
   <div class="card" style="max-width:560px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:8px;">
@@ -604,13 +580,12 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
 
 <script>
 /* ══════════════════════════════════════════
-   GLOBAL CONFIG
+   HARDCODED CONFIG — no setup screen needed
 ══════════════════════════════════════════ */
-const STORAGE_KEY='eol_unified_v2';
+const APPURL = 'https://script.google.com/macros/s/AKfycbxT-CjtZG4D2HnXQsBVE0myy4RuPlNqLaeeAoVQJ0wUAM1DOO-YLmPN4vRYqtMh4fNI/exec';
 const IMGBB_KEY='b4ebddea23a53d61e7f2b06ce4f20d8a';
 const MAX_PHOTOS=3,IMG_MAX_PX=1200,IMG_Q=0.80;
 let ADMIN_USER='EOLmaint',ADMIN_PASS='EOLmaint';
-let APPURL='';
 
 /* ══════════════════════════════════════════
    STATE
@@ -732,10 +707,6 @@ const CURRENT_WK=detectCurrentWeek();
 const CURRENT_WKNUM=CURRENT_WK-600;
 function getWk(fwk){return CALENDAR.find(w=>w.wk===fwk);}
 
-/* ══════════════════════════════════════════
-   DATE → FISCAL WEEK
-   Given 'YYYY-MM-DD', returns fiscal WK code (e.g. 622) or null.
-══════════════════════════════════════════ */
 function dateToFiscalWeek(dateStr){
   if(!dateStr)return null;
   const parts=dateStr.split('-');if(parts.length<3)return null;
@@ -754,141 +725,47 @@ function dateToFiscalWeek(dateStr){
   return null;
 }
 
-/* ══════════════════════════════════════════
-   PM AUTO-SYNC FROM MAINTENANCE RECORD
-   Fires after a record is saved or completed.
-
-   Matching rules:
-   ① maintenanceType must be 'Quarterly Maintenance'
-      OR 'Half-Yearly Maintenance'
-   ② Equipment name stripped of any section suffix
-      (Top / Bottom / Both) — or no suffix at all
-   ③ Stripped name matched exactly against PM mold names
-   ④ dateStart → fiscal week → find nearest un-done
-      scheduled week within ±2 weeks (handles records
-      entered slightly before/after the scheduled week)
-   ⑤ Slot not already marked Done
-══════════════════════════════════════════ */
 const PM_VALID_TYPES=['Quarterly Maintenance','Half-Yearly Maintenance'];
 
 function pmStripSectionSuffix(equipStr){
-  // Remove trailing (Top), (Bottom), (Both), (top), etc.
   return (equipStr||'').replace(/\s*\((Top|Bottom|Both)\)\s*$/i,'').trim();
 }
 
 async function pmAutoSyncFromRecord(record){
-  // ① Gate: maintenance type
   const mtype=(record.maintenanceType||'').trim();
   if(!PM_VALID_TYPES.includes(mtype))return;
-
-  // ② Strip section suffix to get bare equipment name
   const equipName=pmStripSectionSuffix(record.equipment||'');
   if(!equipName)return;
-
-  // ③ Gate: must have dateStart
   if(!record.dateStart)return;
-
-  // Map dateStart → fiscal week number (1–52)
   const fiscalWk=dateToFiscalWeek(record.dateStart);
   if(!fiscalWk)return;
-  const recordWkNum=fiscalWk-600; // 1–52
-
-  // Search all PM scheduler types (currently-loaded type first)
+  const recordWkNum=fiscalWk-600;
   const allTypeIds=PM_SCHED_TYPES.map(t=>t.id);
-  const orderedTypes=currentSchedType
-    ?[currentSchedType.id,...allTypeIds.filter(id=>id!==currentSchedType.id)]
-    :allTypeIds;
-
+  const orderedTypes=currentSchedType?[currentSchedType.id,...allTypeIds.filter(id=>id!==currentSchedType.id)]:allTypeIds;
   for(const typeId of orderedTypes){
-    let moldsToSearch=[];
-    let tempHistory=[];
-
-    if(currentSchedType&&currentSchedType.id===typeId&&pmMolds.length){
-      moldsToSearch=pmMolds;
-      tempHistory=pmHistory;
-    }else{
-      try{
-        const pmData=await jsonp({action:'getPMData',typeId},20000);
-        if(!pmData||pmData.status==='error')continue;
-        moldsToSearch=(pmData.molds||[]).map(m=>({...m,scheduledWeeks:m.scheduledWeeks||[]}));
-        tempHistory=pmData.history||[];
-      }catch(e){continue;}
-    }
-
-    // Match mold by exact name (after stripping suffix)
+    let moldsToSearch=[],tempHistory=[];
+    if(currentSchedType&&currentSchedType.id===typeId&&pmMolds.length){moldsToSearch=pmMolds;tempHistory=pmHistory;}
+    else{try{const pmData=await jsonp({action:'getPMData',typeId},20000);if(!pmData||pmData.status==='error')continue;moldsToSearch=(pmData.molds||[]).map(m=>({...m,scheduledWeeks:m.scheduledWeeks||[]}));tempHistory=pmData.history||[];}catch(e){continue;}}
     const mold=moldsToSearch.find(m=>m.name===equipName);
     if(!mold||!mold.scheduledWeeks.length)continue;
-
-    // ④ Find the best matching scheduled week:
-    // Priority 1: exact match with the record's fiscal week
-    // Priority 2: nearest un-done scheduled week within ±2 weeks
-    const doneSets=new Set(
-      tempHistory
-        .filter(h=>h.moldId===mold.id&&h.fiscalYear===26)
-        .map(h=>h.scheduledWkNum)
-    );
+    const doneSets=new Set(tempHistory.filter(h=>h.moldId===mold.id&&h.fiscalYear===26).map(h=>h.scheduledWkNum));
     const pendingWeeks=mold.scheduledWeeks.filter(wk=>!doneSets.has(wk));
-    if(!pendingWeeks.length)continue; // all slots already done
-
-    // Buffer: accept PM done up to 2 weeks early OR 2 weeks late
-    // e.g. Due week 18 → accepts records from week 16 to week 20 inclusive
-    const BUFFER=2;
-    let matchedWkNum=null;
-    let bestDiff=Infinity;
-    for(const wk of pendingWeeks){
-      const diff=Math.abs(wk-recordWkNum);
-      // Handle year-boundary wrap (e.g. week 51 vs week 1 = diff 2 not 50)
-      const diffWrapped=Math.min(diff, 52-diff);
-      if(diffWrapped<=BUFFER&&diffWrapped<bestDiff){
-        bestDiff=diffWrapped;matchedWkNum=wk;
-      }
-    }
+    if(!pendingWeeks.length)continue;
+    const BUFFER=2;let matchedWkNum=null,bestDiff=Infinity;
+    for(const wk of pendingWeeks){const diff=Math.abs(wk-recordWkNum);const diffWrapped=Math.min(diff,52-diff);if(diffWrapped<=BUFFER&&diffWrapped<bestDiff){bestDiff=diffWrapped;matchedWkNum=wk;}}
     if(matchedWkNum===null)continue;
-
-    // ⑤ Already done guard (double-check with matched week)
     if(doneSets.has(matchedWkNum))continue;
-
-    // ✅ All gates passed — auto-mark Done
     const matchedFiscalWk=600+matchedWkNum;
-    const histEntry={
-      moldId:mold.id,moldName:mold.name,moldGroup:mold.group||'',
-      scheduledWkNum:matchedWkNum,fiscalYear:26,fiscalWeek:matchedFiscalWk,
-      doneDate:record.dateStart,doneBy:record.pic||'—',
-      notes:'[AUTO] '+mtype+(matchedWkNum!==recordWkNum?' (nearest wk)':''),
-      recordedAt:new Date().toLocaleDateString('en-MY'),source:'eol'
-    };
-    try{
-      const r=await jsonp({
-        action:'pmAppendHistory',typeId,
-        hMoldId:     String(mold.id),
-        hMoldName:   mold.name,
-        hMoldGroup:  mold.group||'',
-        hSchedWkNum: String(matchedWkNum),
-        hFiscalYear: '26',
-        hFiscalWeek: String(matchedFiscalWk),
-        hDoneDate:   record.dateStart,
-        hDoneBy:     record.pic||'',
-        hNotes:      '[AUTO] '+mtype+(matchedWkNum!==recordWkNum?' (nearest wk)':''),
-        hRecordedAt: new Date().toLocaleDateString('en-MY'),
-        hSource:     'eol'
-      },20000);
-      if(r&&r.status==='ok'){
-        if(currentSchedType&&currentSchedType.id===typeId){
-          pmHistory.push(histEntry);
-          if(pmActiveSec==='pm-dashboard')renderPMDashboard();
-          if(pmActiveSec==='pm-molds')renderPMMolds();
-          if(pmActiveSec==='pm-history')renderPMHistory();
-        }
-        const wkInfo=getWk(matchedFiscalWk);
-        toast('🔗 PM Auto-Sync: '+equipName+' WK'+matchedFiscalWk+(wkInfo?' ('+wkInfo.mth+')':'')+' marked ✅ Done!');
-      }
+    const histEntry={moldId:mold.id,moldName:mold.name,moldGroup:mold.group||'',scheduledWkNum:matchedWkNum,fiscalYear:26,fiscalWeek:matchedFiscalWk,doneDate:record.dateStart,doneBy:record.pic||'—',notes:'[AUTO] '+mtype+(matchedWkNum!==recordWkNum?' (nearest wk)':''),recordedAt:new Date().toLocaleDateString('en-MY'),source:'eol'};
+    try{const r=await jsonp({action:'pmAppendHistory',typeId,hMoldId:String(mold.id),hMoldName:mold.name,hMoldGroup:mold.group||'',hSchedWkNum:String(matchedWkNum),hFiscalYear:'26',hFiscalWeek:String(matchedFiscalWk),hDoneDate:record.dateStart,hDoneBy:record.pic||'',hNotes:'[AUTO] '+mtype+(matchedWkNum!==recordWkNum?' (nearest wk)':''),hRecordedAt:new Date().toLocaleDateString('en-MY'),hSource:'eol'},20000);
+      if(r&&r.status==='ok'){if(currentSchedType&&currentSchedType.id===typeId){pmHistory.push(histEntry);if(pmActiveSec==='pm-dashboard')renderPMDashboard();if(pmActiveSec==='pm-molds')renderPMMolds();if(pmActiveSec==='pm-history')renderPMHistory();}const wkInfo=getWk(matchedFiscalWk);toast('🔗 PM Auto-Sync: '+equipName+' WK'+matchedFiscalWk+(wkInfo?' ('+wkInfo.mth+')':'')+' marked ✅ Done!');}
     }catch(e){console.warn('PM auto-sync failed:',e.message);}
-    break; // matched — stop checking other types
+    break;
   }
 }
 
 /* ══════════════════════════════════════════
-   JSONP — shared transport for ALL calls
+   JSONP transport
 ══════════════════════════════════════════ */
 function jsonp(params,ms){
   return new Promise((res,rej)=>{
@@ -905,112 +782,48 @@ function jsonp(params,ms){
   });
 }
 
-/* ══════════════════════════════════════════
-   PM SCHEDULER — GOOGLE SHEETS STORAGE
-   All params passed as FLAT individual fields
-   (never JSON blobs) to avoid URL encoding issues.
-   READ:  getPMData      → typeId
-   WRITE: pmAddMold      → typeId + flat mold fields
-          pmUpdateMold   → typeId + flat mold fields
-          pmDeleteMold   → typeId + moldId
-          pmAppendHistory→ typeId + flat history fields
-          pmAddUser      → typeId + userName + userAddedAt
-          pmDeleteUser   → typeId + name
-══════════════════════════════════════════ */
 function pmTypeId(){return currentSchedType?.id||'mold-die';}
 
 async function pmLoadFromSheets(){
   pmSetSyncStatus('sync','Loading from Google Sheets...');
   try{
     const r=await jsonp({action:'getPMData',typeId:pmTypeId()},30000);
-    if(r&&r.status==='error') throw new Error(r.message||'Load failed');
-    pmMolds   = r.molds   || [];
-    pmHistory = r.history || [];
-    pmUsers   = r.users   || [];
+    if(r&&r.status==='error')throw new Error(r.message||'Load failed');
+    pmMolds=r.molds||[];pmHistory=r.history||[];pmUsers=r.users||[];
     pmMolds=pmMolds.map(m=>({...m,scheduledWeeks:m.scheduledWeeks||[]}));
-    // Seed if fresh (no molds yet for this type)
-    if(!pmMolds.length){
-      const seeds=PM_SCHED_SEEDS[pmTypeId()]||[];
-      for(const seed of seeds){
-        await pmCallAddMold(seed);
-        pmMolds.push(seed);
-      }
-    }
+    if(!pmMolds.length){const seeds=PM_SCHED_SEEDS[pmTypeId()]||[];for(const seed of seeds){await pmCallAddMold(seed);pmMolds.push(seed);}}
     pmSetSyncStatus('ok','Synced with Google Sheets');
-  }catch(e){
-    pmSetSyncStatus('err','Sync error — '+e.message);
-    toast('⚠️ PM Scheduler: '+e.message);
-  }
+  }catch(e){pmSetSyncStatus('err','Sync error — '+e.message);toast('⚠️ PM Scheduler: '+e.message);}
 }
 
-/* Build flat params for a mold object — avoids JSON blob in URL */
-function pmMoldParams(m){
-  return {
-    moldId:        String(m.id),
-    moldName:      String(m.name||''),
-    moldGroup:     String(m.group||''),
-    moldMachine:   String(m.machine||''),
-    moldInterval:  m.pmIntervalWeeks!=null?String(m.pmIntervalWeeks):'',
-    moldWeeks:     (m.scheduledWeeks||[]).join(',')
-  };
-}
+function pmMoldParams(m){return{moldId:String(m.id),moldName:String(m.name||''),moldGroup:String(m.group||''),moldMachine:String(m.machine||''),moldInterval:m.pmIntervalWeeks!=null?String(m.pmIntervalWeeks):'',moldWeeks:(m.scheduledWeeks||[]).join(',')};}
 
-/* Generic atomic call with flat params */
 async function pmAtomicCall(action,flatParams){
   if(pmIsSaving)return{status:'error',message:'busy'};
-  pmIsSaving=true;
-  pmSetSyncStatus('sync','Saving...');
-  try{
-    const r=await jsonp({action,typeId:pmTypeId(),...flatParams},30000);
-    if(r&&r.status==='ok'){
-      pmSetSyncStatus('ok','Saved to Google Sheets');
-    }else{
-      throw new Error((r&&r.message)||'Save failed');
-    }
-    return r;
-  }catch(e){
-    pmSetSyncStatus('err','Save error — '+e.message);
-    toast('❌ PM save failed: '+e.message);
-    return {status:'error',message:e.message};
-  }finally{
-    pmIsSaving=false;
-  }
+  pmIsSaving=true;pmSetSyncStatus('sync','Saving...');
+  try{const r=await jsonp({action,typeId:pmTypeId(),...flatParams},30000);if(r&&r.status==='ok'){pmSetSyncStatus('ok','Saved to Google Sheets');}else throw new Error((r&&r.message)||'Save failed');return r;}
+  catch(e){pmSetSyncStatus('err','Save error — '+e.message);toast('❌ PM save failed: '+e.message);return{status:'error',message:e.message};}
+  finally{pmIsSaving=false;}
 }
 
-async function pmCallAddMold(m){
-  return pmAtomicCall('pmAddMold', pmMoldParams(m));
-}
-async function pmCallUpdateMold(m){
-  return pmAtomicCall('pmUpdateMold', pmMoldParams(m));
-}
+async function pmCallAddMold(m){return pmAtomicCall('pmAddMold',pmMoldParams(m));}
+async function pmCallUpdateMold(m){return pmAtomicCall('pmUpdateMold',pmMoldParams(m));}
 
 function pmSetSyncStatus(state,msg){
-  const bar=document.getElementById('pm-sync-bar');
-  if(!bar)return;
-  bar.style.display='';
-  const colors={sync:'var(--pm-acc)',ok:'#3fb950',err:'var(--red)'};
-  const dot=state==='sync'?' spin':'';
+  const bar=document.getElementById('pm-sync-bar');if(!bar)return;bar.style.display='';
   bar.innerHTML=`<div class="si-dot${state==='err'?' err':''}" style="${state==='sync'?'animation:pulse 1s infinite;background:var(--pm-acc);':state==='ok'?'background:#3fb950;':'background:var(--red);'}"></div><span>${msg}</span>`;
-  // Also update main sync bar if in PM mode
-  if(currentModule==='scheduler'){
-    sy(state==='sync'?'sync':state==='ok'?'ok':'off');
-  }
+  if(currentModule==='scheduler')sy(state==='sync'?'sync':state==='ok'?'ok':'off');
 }
 
 /* ══════════════════════════════════════════
-   INIT
+   INIT — skip setup, go straight to login
 ══════════════════════════════════════════ */
 function init(){
-  try{
-    const u=localStorage.getItem(STORAGE_KEY);
-    if(u&&u.includes('script.google.com')&&u.includes('/exec')){
-      APPURL=u;document.getElementById('urlInput').value=u;showScreen('loginScreen');
-    }else{localStorage.removeItem(STORAGE_KEY);showScreen('setupScreen');}
-  }catch(e){showScreen('setupScreen');}
+  showScreen('loginScreen');
 }
 
 function showScreen(id){
-  ['setupScreen','loginScreen','moduleScreen','app'].forEach(s=>{
+  ['loginScreen','moduleScreen','app'].forEach(s=>{
     const el=document.getElementById(s);
     if(el){el.style.display='none';el.classList&&el.classList.remove('active');}
   });
@@ -1019,33 +832,6 @@ function showScreen(id){
   if(id==='app')target.style.display='flex';
   else{target.style.display='flex';target.classList&&target.classList.add('active');}
 }
-
-/* ══════════════════════════════════════════
-   SETUP
-══════════════════════════════════════════ */
-async function doConnect(){
-  const u=document.getElementById('urlInput').value.replace(/\s+/g,'').trim();
-  document.getElementById('urlInput').value=u;
-  const eEl=document.getElementById('setupErr'),oEl=document.getElementById('setupOk');
-  eEl.style.display='none';oEl.style.display='none';
-  if(!u){eEl.textContent='⚠️ Please paste your Apps Script URL.';eEl.style.display='block';return;}
-  if(!u.includes('script.google.com')){eEl.textContent='⚠️ URL must be from script.google.com';eEl.style.display='block';return;}
-  if(!u.includes('/exec')){eEl.textContent='⚠️ URL must end with /exec';eEl.style.display='block';return;}
-  const btn=document.getElementById('connectBtn');btn.disabled=true;btn.textContent='⏳ Connecting...';
-  APPURL=u;
-  try{
-    const r=await jsonp({action:'ping'},25000);
-    if(r&&r.status==='ok'){
-      localStorage.setItem(STORAGE_KEY,u);oEl.style.display='block';
-      btn.textContent='✅ Connected!';
-      setTimeout(()=>{btn.disabled=false;btn.textContent='🔗 Connect to Google Sheets';showScreen('loginScreen');},1200);
-    }else throw new Error('Server error.');
-  }catch(e){
-    APPURL='';eEl.textContent='❌ '+e.message;eEl.style.display='block';
-    btn.disabled=false;btn.textContent='🔗 Connect to Google Sheets';
-  }
-}
-function goSetup(){localStorage.removeItem(STORAGE_KEY);APPURL='';showScreen('setupScreen');}
 
 /* ══════════════════════════════════════════
    LOGIN
@@ -1121,10 +907,7 @@ function selectModule(mod){
 function buildDeptGrid(){
   const grid=document.getElementById('deptPickGrid');
   if(!departments.length){grid.innerHTML='<p style="color:var(--tx2);font-size:13px;">No departments configured.</p>';return;}
-  grid.innerHTML=departments.map((d,i)=>`
-    <div class="sel-btn" id="dpbtn-${i}" onclick="pickDeptIdx(${i})">
-      <span class="si">${deptIcon(d.name)}</span>${esc(d.name)}
-    </div>`).join('');
+  grid.innerHTML=departments.map((d,i)=>`<div class="sel-btn" id="dpbtn-${i}" onclick="pickDeptIdx(${i})"><span class="si">${deptIcon(d.name)}</span>${esc(d.name)}</div>`).join('');
 }
 
 function pickDeptIdx(i){
@@ -1144,11 +927,7 @@ function confirmDeptPick(){
 
 function buildSchedTypeGrid(){
   const grid=document.getElementById('schedTypeGrid');
-  grid.innerHTML=PM_SCHED_TYPES.map(t=>`
-    <div class="sel-btn" id="stbtn-${t.id}" onclick="pickSchedType('${t.id}')">
-      <span class="si">${t.icon}</span>${t.label}
-      <div class="sd">${t.desc}</div>
-    </div>`).join('');
+  grid.innerHTML=PM_SCHED_TYPES.map(t=>`<div class="sel-btn" id="stbtn-${t.id}" onclick="pickSchedType('${t.id}')"><span class="si">${t.icon}</span>${t.label}<div class="sd">${t.desc}</div></div>`).join('');
 }
 
 function pickSchedType(id){
@@ -1160,34 +939,19 @@ function pickSchedType(id){
 
 async function confirmSchedPick(){
   if(!pendingSchedType){document.getElementById('schedPickErr').style.display='block';return;}
-  currentSchedType=pendingSchedType;
-  currentModule='scheduler';
+  currentSchedType=pendingSchedType;currentModule='scheduler';
   load('Loading PM data from Google Sheets...');
-  try{
-    await pmLoadFromSheets();
-    unload();
-    enterApp();
-  }catch(e){
-    unload();
-    toast('⚠️ Could not load PM data: '+e.message);
-    enterApp(); // still enter, will show empty state
-  }
+  try{await pmLoadFromSheets();unload();enterApp();}
+  catch(e){unload();toast('⚠️ Could not load PM data: '+e.message);enterApp();}
 }
 
 /* ══════════════════════════════════════════
    ENTER APP
 ══════════════════════════════════════════ */
 function enterApp(){
-  showScreen('app');
-  buildAppUI();
-  if(currentModule==='maintenance'){
-    renderMaintenanceTabs();
-    goSec('dash');
-    renderDash();
-  }else{
-    renderSchedulerTabs();
-    pmShowTab('pm-dashboard');
-  }
+  showScreen('app');buildAppUI();
+  if(currentModule==='maintenance'){renderMaintenanceTabs();goSec('dash');renderDash();}
+  else{renderSchedulerTabs();pmShowTab('pm-dashboard');}
 }
 
 function buildAppUI(){
@@ -1197,38 +961,23 @@ function buildAppUI(){
   const roleBadge=document.getElementById('roleBadge');
   const pmNav=document.getElementById('pm-bottom-nav');
   const syncBar=document.getElementById('syncBar');
-
   roleBadge.textContent=role==='admin'?'🛡️ Admin':'👷 User';
   roleBadge.className='badge'+(role==='admin'?' adm':'');
-
   if(currentModule==='maintenance'){
-    topbar.className='topbar';
-    document.getElementById('topIcon').textContent='⚙️';
-    document.getElementById('topTitle').textContent='EOL Maintenance';
-    document.getElementById('topTitle').style.color='var(--acc)';
+    topbar.className='topbar';document.getElementById('topIcon').textContent='⚙️';document.getElementById('topTitle').textContent='EOL Maintenance';document.getElementById('topTitle').style.color='var(--acc)';
     modeBadge.style.display='';modeBadge.className='badge';modeBadge.textContent='🔧 Maintenance';
-    deptBadge.style.display='';
-    deptBadge.textContent=curDept?deptIcon(curDept.name)+' '+curDept.name:'';
-    syncBar.style.display='';
-    pmNav.style.display='none';
-    sy('ok');
+    deptBadge.style.display='';deptBadge.textContent=curDept?deptIcon(curDept.name)+' '+curDept.name:'';
+    syncBar.style.display='';pmNav.style.display='none';sy('ok');
   }else{
-    topbar.className='topbar topbar-pm';
-    document.getElementById('topIcon').textContent=currentSchedType?.icon||'📅';
-    document.getElementById('topTitle').textContent='PM Scheduler';
-    document.getElementById('topTitle').style.color='var(--pm-acc)';
-    modeBadge.style.display='';modeBadge.className='badge badge-pm';
-    modeBadge.textContent='📅 '+currentSchedType?.label;
-    deptBadge.style.display='none';
-    syncBar.style.display='none';
+    topbar.className='topbar topbar-pm';document.getElementById('topIcon').textContent=currentSchedType?.icon||'📅';document.getElementById('topTitle').textContent='PM Scheduler';document.getElementById('topTitle').style.color='var(--pm-acc)';
+    modeBadge.style.display='';modeBadge.className='badge badge-pm';modeBadge.textContent='📅 '+currentSchedType?.label;
+    deptBadge.style.display='none';syncBar.style.display='none';
   }
 }
 
 function backToModule(){
-  currentModule=null;curDept=null;currentSchedType=null;
-  pendingDeptIdx=null;pendingSchedType=null;
-  document.getElementById('deptPickWrap').style.display='none';
-  document.getElementById('schedPickWrap').style.display='none';
+  currentModule=null;curDept=null;currentSchedType=null;pendingDeptIdx=null;pendingSchedType=null;
+  document.getElementById('deptPickWrap').style.display='none';document.getElementById('schedPickWrap').style.display='none';
   ['modMaint','modSched'].forEach(id=>document.getElementById(id).classList.remove('active','active-pm'));
   showScreen('moduleScreen');
 }
@@ -1238,12 +987,7 @@ function backToModule(){
 ══════════════════════════════════════════ */
 function renderMaintenanceTabs(){
   document.getElementById('pm-bottom-nav').style.display='none';
-  const tabs=[
-    {id:'dash',label:'📊 Dashboard'},
-    {id:'new',label:'➕ New PM'},
-    {id:'recs',label:'📋 Records'},
-    {id:'report',label:'📄 Report'},
-  ];
+  const tabs=[{id:'dash',label:'📊 Dashboard'},{id:'new',label:'➕ New PM'},{id:'recs',label:'📋 Records'},{id:'report',label:'📄 Report'}];
   if(role==='admin')tabs.push({id:'mgmt',label:'⚙️ Manage'});
   document.getElementById('appTabs').innerHTML=tabs.map(t=>`<div class="tab" id="mtab-${t.id}" onclick="goSec('${t.id}')">${t.label}</div>`).join('');
 }
@@ -1265,16 +1009,10 @@ function goSec(id){
 ══════════════════════════════════════════ */
 function renderSchedulerTabs(){
   document.getElementById('pm-bottom-nav').style.display='flex';
-  const tabs=[
-    {id:'pm-dashboard',label:'📊 Dashboard'},
-    {id:'pm-molds',   label:'🔧 All Molds'},
-    {id:'pm-calendar',label:'📅 Calendar'},
-    {id:'pm-history', label:'📋 History'},
-  ];
+  const tabs=[{id:'pm-dashboard',label:'📊 Dashboard'},{id:'pm-molds',label:'🔧 All Molds'},{id:'pm-calendar',label:'📅 Calendar'},{id:'pm-history',label:'📋 History'}];
   if(role==='admin')tabs.push({id:'pm-users',label:'👤 Users'});
   document.getElementById('appTabs').innerHTML=tabs.map(t=>`<div class="tab" id="pmtab-${t.id}" onclick="pmShowTab('${t.id}')">${t.label}</div>`).join('');
-  const ubtn=document.getElementById('pmbtab-users');
-  if(ubtn)ubtn.style.display=role==='admin'?'flex':'none';
+  const ubtn=document.getElementById('pmbtab-users');if(ubtn)ubtn.style.display=role==='admin'?'flex':'none';
 }
 
 function pmShowTab(id){
@@ -1297,8 +1035,7 @@ function pmShowTab(id){
    EOL SYNC HELPERS
 ══════════════════════════════════════════ */
 function sy(s){
-  const d=document.getElementById('sDot'),t=document.getElementById('sTxt');
-  if(!d||!t)return;
+  const d=document.getElementById('sDot'),t=document.getElementById('sTxt');if(!d||!t)return;
   d.className='dot'+(s==='sync'?' spin':s==='off'?' off':'');
   t.textContent={sync:'Syncing...',off:'⚠️ Error — tap Refresh',ok:'Connected to Google Sheets'}[s]||'';
 }
@@ -1326,13 +1063,9 @@ function renderDash(){
   if(!departments.length){container.innerHTML='<div class="empty"><div class="ei">🏭</div><h4>No departments yet</h4></div>';return;}
   const depts=role==='user'&&curDept?[curDept]:departments;
   container.innerHTML=depts.map(d=>{
-    const dr=recs.filter(r=>r.dept===d.name);
-    const done=dr.filter(r=>r.status==='completed').length;
-    const wip=dr.length-done;
-    const af=dashActiveFilter[d.name]||'all';
-    const dkey='dk_'+d.name.replace(/[^a-zA-Z0-9]/g,'_');
-    return`<div class="dash-dept-card">
-      <div class="ddc-hdr"><div class="ddc-name">${deptIcon(d.name)} ${esc(d.name)}</div><span style="font-size:12px;color:var(--tx2);">${dr.length} record${dr.length!==1?'s':''}</span></div>
+    const dr=recs.filter(r=>r.dept===d.name);const done=dr.filter(r=>r.status==='completed').length;const wip=dr.length-done;
+    const af=dashActiveFilter[d.name]||'all';const dkey='dk_'+d.name.replace(/[^a-zA-Z0-9]/g,'_');
+    return`<div class="dash-dept-card"><div class="ddc-hdr"><div class="ddc-name">${deptIcon(d.name)} ${esc(d.name)}</div><span style="font-size:12px;color:var(--tx2);">${dr.length} record${dr.length!==1?'s':''}</span></div>
       <div class="stats">
         <div class="stat${af==='all'?' af':''}" onclick="dashF('${esc(d.name)}','all')"><div class="sn" style="color:var(--acc)">${dr.length}</div><div class="sl">Total</div></div>
         <div class="stat${af==='done'?' af':''}" onclick="dashF('${esc(d.name)}','done')"><div class="sn" style="color:#3fb950">${done}</div><div class="sl">Done</div></div>
@@ -1348,29 +1081,15 @@ function renderDash(){
   depts.forEach(d=>renderDashRecent(d.name));
 }
 function dashF(n,f){dashActiveFilter[n]=f;renderDash();}
-function toggleDashRecent(dkey){
-  dashOpenState[dkey]=!dashOpenState[dkey];
-  const el=document.getElementById('dash-recent-'+dkey),arrow=document.getElementById('dash-arrow-'+dkey);
-  if(el)el.style.display=dashOpenState[dkey]?'block':'none';
-  if(arrow)arrow.textContent=dashOpenState[dkey]?'▼':'▶';
-}
+function toggleDashRecent(dkey){dashOpenState[dkey]=!dashOpenState[dkey];const el=document.getElementById('dash-recent-'+dkey),arrow=document.getElementById('dash-arrow-'+dkey);if(el)el.style.display=dashOpenState[dkey]?'block':'none';if(arrow)arrow.textContent=dashOpenState[dkey]?'▼':'▶';}
 function renderDashRecent(deptName){
-  const dkey='dk_'+deptName.replace(/[^a-zA-Z0-9]/g,'_');
-  const el=document.getElementById('dash-recent-'+dkey);if(!el)return;
-  const af=dashActiveFilter[deptName]||'all';
-  let rs=recs.filter(r=>r.dept===deptName);
-  if(af==='done')rs=rs.filter(r=>r.status==='completed');
-  else if(af==='wip')rs=rs.filter(r=>r.status!=='completed');
-  const show=rs.slice(0,5);
-  if(!show.length){el.innerHTML='<p style="font-size:12px;color:var(--tx2);padding:4px 0;">No records.</p>';return;}
+  const dkey='dk_'+deptName.replace(/[^a-zA-Z0-9]/g,'_');const el=document.getElementById('dash-recent-'+dkey);if(!el)return;
+  const af=dashActiveFilter[deptName]||'all';let rs=recs.filter(r=>r.dept===deptName);
+  if(af==='done')rs=rs.filter(r=>r.status==='completed');else if(af==='wip')rs=rs.filter(r=>r.status!=='completed');
+  const show=rs.slice(0,5);if(!show.length){el.innerHTML='<p style="font-size:12px;color:var(--tx2);padding:4px 0;">No records.</p>';return;}
   el.innerHTML=show.map(r=>rCard(r,true)).join('');
 }
-function toggleManage(key){
-  manageOpenState[key]=!manageOpenState[key];
-  const body=document.getElementById('msec-'+key),arrow=document.getElementById('marr-'+key);
-  if(body)body.style.display=manageOpenState[key]?'block':'none';
-  if(arrow)arrow.textContent=manageOpenState[key]?'▼':'▶';
-}
+function toggleManage(key){manageOpenState[key]=!manageOpenState[key];const body=document.getElementById('msec-'+key),arrow=document.getElementById('marr-'+key);if(body)body.style.display=manageOpenState[key]?'block':'none';if(arrow)arrow.textContent=manageOpenState[key]?'▼':'▶';}
 
 /* ══════════════════════════════════════════
    NEW PM FORM
@@ -1378,155 +1097,58 @@ function toggleManage(key){
 function fillNewForm(){
   const dept=role==='user'?curDept:(curDept||departments[0]);
   document.getElementById('formDeptLabel').textContent=dept?deptIcon(dept.name)+' '+dept.name:'—';
-  const eEl=document.getElementById('fEquip');
-  eEl.innerHTML='<option value="">— Select equipment —</option>'+(dept?dept.equipment.map(e=>`<option value="${esc(eqId(e))}">${esc(eqId(e))}</option>`).join(''):'');
-  eEl.onchange=()=>onEquipChange(dept);
-  mkSelPIC('fPIC','— Select PIC —',pics);
-  mkSel('fType','— Select type —',types);
+  const eEl=document.getElementById('fEquip');eEl.innerHTML='<option value="">— Select equipment —</option>'+(dept?dept.equipment.map(e=>`<option value="${esc(eqId(e))}">${esc(eqId(e))}</option>`).join(''):'');
+  eEl.onchange=()=>onEquipChange(dept);mkSelPIC('fPIC','— Select PIC —',pics);mkSel('fType','— Select type —',types);
   renderChips('partsGrid',dept?dept.parts:[],[]);
-  showHalfSel(!!(dept&&dept.name.toLowerCase()==='mold die'));
-  if(!deptHasPresses(dept))showPressSel([]);
+  showHalfSel(!!(dept&&dept.name.toLowerCase()==='mold die'));if(!deptHasPresses(dept))showPressSel([]);
 }
 function eqId(e){return typeof e==='string'?e:e.id||'';}
 function eqPresses(e){return typeof e==='object'&&e.presses?e.presses:[];}
-function deptHasPresses(dept){
-  if(!dept)return false;
-  const n=dept.name.toLowerCase();
-  return !!(dept.hasPresses||n==='transfer block'||n==='mold machine');
-}
+function deptHasPresses(dept){if(!dept)return false;const n=dept.name.toLowerCase();return !!(dept.hasPresses||n==='transfer block'||n==='mold machine');}
 function mkSel(id,ph,arr){const el=document.getElementById(id);if(!el)return;el.innerHTML=`<option value="">${ph}</option>`+arr.map(v=>`<option>${esc(v)}</option>`).join('');}
 function mkSelPIC(id,ph,arr){const el=document.getElementById(id);if(!el)return;el.innerHTML='<option value="">'+ph+'</option>'+arr.map(p=>{const n=typeof p==='string'?p:(p.name||'');return`<option value="${esc(n)}">${esc(n)}</option>`;}).join('');}
-function renderChips(cid,arr,selected){
-  const g=document.getElementById(cid);if(!g)return;
-  if(!arr||!arr.length){g.innerHTML='<p style="color:var(--tx2);font-size:13px;">No parts/tools yet.</p>';return;}
-  g.innerHTML=arr.map(p=>{const sel=selected&&selected.includes(p);return`<div class="chip${sel?' sel':''}" data-part="${esc(p)}" onclick="this.classList.toggle('sel')"><div class="ck">✓</div>${esc(p)}</div>`;}).join('');
-}
+function renderChips(cid,arr,selected){const g=document.getElementById(cid);if(!g)return;if(!arr||!arr.length){g.innerHTML='<p style="color:var(--tx2);font-size:13px;">No parts/tools yet.</p>';return;}g.innerHTML=arr.map(p=>{const sel=selected&&selected.includes(p);return`<div class="chip${sel?' sel':''}" data-part="${esc(p)}" onclick="this.classList.toggle('sel')"><div class="ck">✓</div>${esc(p)}</div>`;}).join('');}
 function getSelChips(cid){return[...document.querySelectorAll('#'+cid+' .chip.sel')].map(c=>c.dataset.part);}
-function onEquipChange(dept){
-  const val=document.getElementById('fEquip').value;
-  if(!dept||!deptHasPresses(dept)||!val){showPressSel([]);return;}
-  const equip=dept.equipment.find(e=>eqId(e)===val);
-  const presses=equip?eqPresses(equip):[];
-  showPressSel(presses.length?presses:['Press 1','Press 2','Press 3','Press 4']);
-}
-function showPressSel(presses){
-  const wrap=document.getElementById('pressWrap'),grid=document.getElementById('pressGrid');
-  if(!wrap||!grid)return;
-  if(!presses||!presses.length){wrap.style.display='none';selectedPresses=[];return;}
-  wrap.style.display='';
-  grid.innerHTML=presses.map(p=>`<div class="press-btn" data-press="${esc(p)}" onclick="togglePress(this)">${esc(p)}</div>`).join('');
-  selectedPresses=[];
-}
-function togglePress(btn){
-  const sel=[...document.querySelectorAll('#pressGrid .press-btn.sel')];
-  if(btn.classList.contains('sel')){btn.classList.remove('sel');selectedPresses=sel.filter(b=>b!==btn).map(b=>b.dataset.press);}
-  else if(sel.length>=4){toast('⚠️ Max 4 presses.');return;}
-  else{btn.classList.add('sel');selectedPresses=[...sel,btn].map(b=>b.dataset.press);}
-}
-function showHalfSel(show){
-  const wrap=document.getElementById('halfWrap');if(wrap)wrap.style.display=show?'':'none';
-  if(!show){selectedHalf=null;['halfTop','halfBottom','halfBoth'].forEach(id=>document.getElementById(id)?.classList.remove('active'));}
-}
-function pickHalf(h){
-  selectedHalf=h;
-  ['halfTop','halfBottom','halfBoth'].forEach(id=>document.getElementById(id)?.classList.remove('active'));
-  ({top:'halfTop',bottom:'halfBottom',both:'halfBoth'})[h]&&document.getElementById(({top:'halfTop',bottom:'halfBottom',both:'halfBoth'})[h])?.classList.add('active');
-}
-function showEditHalfSel(show,current){
-  const wrap=document.getElementById('eHalfWrap');if(wrap)wrap.style.display=show?'':'none';
-  if(show&&current){editSelectedHalf=current;['eHalfTop','eHalfBottom','eHalfBoth'].forEach(id=>document.getElementById(id)?.classList.remove('active'));const m={top:'eHalfTop',bottom:'eHalfBottom',both:'eHalfBoth'};document.getElementById(m[current])?.classList.add('active');}
-  else if(!show)editSelectedHalf=null;
-}
+function onEquipChange(dept){const val=document.getElementById('fEquip').value;if(!dept||!deptHasPresses(dept)||!val){showPressSel([]);return;}const equip=dept.equipment.find(e=>eqId(e)===val);const presses=equip?eqPresses(equip):[];showPressSel(presses.length?presses:['Press 1','Press 2','Press 3','Press 4']);}
+function showPressSel(presses){const wrap=document.getElementById('pressWrap'),grid=document.getElementById('pressGrid');if(!wrap||!grid)return;if(!presses||!presses.length){wrap.style.display='none';selectedPresses=[];return;}wrap.style.display='';grid.innerHTML=presses.map(p=>`<div class="press-btn" data-press="${esc(p)}" onclick="togglePress(this)">${esc(p)}</div>`).join('');selectedPresses=[];}
+function togglePress(btn){const sel=[...document.querySelectorAll('#pressGrid .press-btn.sel')];if(btn.classList.contains('sel')){btn.classList.remove('sel');selectedPresses=sel.filter(b=>b!==btn).map(b=>b.dataset.press);}else if(sel.length>=4){toast('⚠️ Max 4 presses.');return;}else{btn.classList.add('sel');selectedPresses=[...sel,btn].map(b=>b.dataset.press);}}
+function showHalfSel(show){const wrap=document.getElementById('halfWrap');if(wrap)wrap.style.display=show?'':'none';if(!show){selectedHalf=null;['halfTop','halfBottom','halfBoth'].forEach(id=>document.getElementById(id)?.classList.remove('active'));}}
+function pickHalf(h){selectedHalf=h;['halfTop','halfBottom','halfBoth'].forEach(id=>document.getElementById(id)?.classList.remove('active'));({top:'halfTop',bottom:'halfBottom',both:'halfBoth'})[h]&&document.getElementById(({top:'halfTop',bottom:'halfBottom',both:'halfBoth'})[h])?.classList.add('active');}
+function showEditHalfSel(show,current){const wrap=document.getElementById('eHalfWrap');if(wrap)wrap.style.display=show?'':'none';if(show&&current){editSelectedHalf=current;['eHalfTop','eHalfBottom','eHalfBoth'].forEach(id=>document.getElementById(id)?.classList.remove('active'));const m={top:'eHalfTop',bottom:'eHalfBottom',both:'eHalfBoth'};document.getElementById(m[current])?.classList.add('active');}else if(!show)editSelectedHalf=null;}
 function pickEditHalf(h){editSelectedHalf=h;['eHalfTop','eHalfBottom','eHalfBoth'].forEach(id=>document.getElementById(id)?.classList.remove('active'));const m={top:'eHalfTop',bottom:'eHalfBottom',both:'eHalfBoth'};document.getElementById(m[h])?.classList.add('active');}
-function showEditPressSel(presses,selectedArr){
-  const wrap=document.getElementById('ePressWrap'),grid=document.getElementById('ePressGrid');
-  if(!wrap||!grid)return;
-  if(!presses||!presses.length){wrap.style.display='none';editSelectedPresses=[];return;}
-  wrap.style.display='';
-  grid.innerHTML=presses.map(p=>`<div class="press-btn${selectedArr&&selectedArr.includes(p)?' sel':''}" data-press="${esc(p)}" onclick="toggleEditPress(this)">${esc(p)}</div>`).join('');
-  editSelectedPresses=selectedArr||[];
-}
-function toggleEditPress(btn){
-  const sel=[...document.querySelectorAll('#ePressGrid .press-btn.sel')];
-  if(btn.classList.contains('sel')){btn.classList.remove('sel');editSelectedPresses=sel.filter(b=>b!==btn).map(b=>b.dataset.press);}
-  else if(sel.length>=4){toast('⚠️ Max 4 presses.');return;}
-  else{btn.classList.add('sel');editSelectedPresses=[...sel,btn].map(b=>b.dataset.press);}
-}
+function showEditPressSel(presses,selectedArr){const wrap=document.getElementById('ePressWrap'),grid=document.getElementById('ePressGrid');if(!wrap||!grid)return;if(!presses||!presses.length){wrap.style.display='none';editSelectedPresses=[];return;}wrap.style.display='';grid.innerHTML=presses.map(p=>`<div class="press-btn${selectedArr&&selectedArr.includes(p)?' sel':''}" data-press="${esc(p)}" onclick="toggleEditPress(this)">${esc(p)}</div>`).join('');editSelectedPresses=selectedArr||[];}
+function toggleEditPress(btn){const sel=[...document.querySelectorAll('#ePressGrid .press-btn.sel')];if(btn.classList.contains('sel')){btn.classList.remove('sel');editSelectedPresses=sel.filter(b=>b!==btn).map(b=>b.dataset.press);}else if(sel.length>=4){toast('⚠️ Max 4 presses.');return;}else{btn.classList.add('sel');editSelectedPresses=[...sel,btn].map(b=>b.dataset.press);}}
 
 /* ══════════════════════════════════════════
    PHOTOS
 ══════════════════════════════════════════ */
 function resetPhotos(){photoQueue=[];document.getElementById('photoGrid').innerHTML='';document.getElementById('upinfo').textContent='';document.getElementById('photoInput').value='';}
-function onPhotoPick(e){
-  const remaining=MAX_PHOTOS-photoQueue.filter(p=>p&&p.state!=='removed').length;
-  const files=[...e.target.files].slice(0,remaining);
-  if(files.length<[...e.target.files].length)toast(`⚠️ Max ${MAX_PHOTOS} photos.`);
-  files.forEach(file=>{
-    if(!file.type.startsWith('image/')){toast('⚠️ Images only.');return;}
-    const idx=photoQueue.length;const entry={idx,file,dataUrl:null,state:'reading'};photoQueue.push(entry);
-    const div=document.createElement('div');div.className='pi';div.id='pi-'+idx;
-    div.innerHTML='<div class="ov"><div class="pi-sp"></div></div>';
-    document.getElementById('photoGrid').appendChild(div);
-    const reader=new FileReader();
-    reader.onload=ev=>{entry.dataUrl=ev.target.result;entry.state='pending';div.innerHTML=`<img src="${ev.target.result}"><button class="pi-rm" onclick="removePhoto(${idx})">✕</button>`;};
-    reader.readAsDataURL(file);
-  });
-  e.target.value='';
-}
+function onPhotoPick(e){const remaining=MAX_PHOTOS-photoQueue.filter(p=>p&&p.state!=='removed').length;const files=[...e.target.files].slice(0,remaining);if(files.length<[...e.target.files].length)toast(`⚠️ Max ${MAX_PHOTOS} photos.`);files.forEach(file=>{if(!file.type.startsWith('image/')){toast('⚠️ Images only.');return;}const idx=photoQueue.length;const entry={idx,file,dataUrl:null,state:'reading'};photoQueue.push(entry);const div=document.createElement('div');div.className='pi';div.id='pi-'+idx;div.innerHTML='<div class="ov"><div class="pi-sp"></div></div>';document.getElementById('photoGrid').appendChild(div);const reader=new FileReader();reader.onload=ev=>{entry.dataUrl=ev.target.result;entry.state='pending';div.innerHTML=`<img src="${ev.target.result}"><button class="pi-rm" onclick="removePhoto(${idx})">✕</button>`;};reader.readAsDataURL(file);});e.target.value='';}
 function removePhoto(idx){const e=photoQueue.find(p=>p&&p.idx===idx);if(e)e.state='removed';document.getElementById('pi-'+idx)?.remove();}
 function compressImage(dataUrl,maxPx,q){return new Promise(res=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(w>maxPx||h>maxPx){if(w>h){h=Math.round(h*maxPx/w);w=maxPx;}else{w=Math.round(w*maxPx/h);h=maxPx;}}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',q));};img.src=dataUrl;});}
-async function uploadPhotoImgBB(entry){
-  const compressed=await compressImage(entry.dataUrl,IMG_MAX_PX,IMG_Q);
-  const form=new FormData();form.append('key',IMGBB_KEY);form.append('image',compressed.split(',')[1]);form.append('name','PM_'+Date.now()+'_'+entry.idx);
-  const resp=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:form});
-  if(!resp.ok)throw new Error('ImgBB HTTP '+resp.status);
-  const data=await resp.json();if(!data.success)throw new Error('ImgBB: '+(data.error?.message||'failed'));
-  return{thumbUrl:data.data.thumb?.url||data.data.display_url,viewUrl:data.data.url_viewer||data.data.url,deleteUrl:data.data.delete_url||''};
-}
-async function uploadAllPhotos(){
-  const pending=photoQueue.filter(p=>p&&p.state==='pending');if(!pending.length)return[];
-  document.getElementById('upinfo').textContent='📤 Uploading photos...';
-  const all=await Promise.all(pending.map(async entry=>{try{const r=await uploadPhotoImgBB(entry);entry.state='done';return{thumbUrl:r.thumbUrl,viewUrl:r.viewUrl,deleteUrl:r.deleteUrl||''};}catch(e){entry.state='fail';toast('⚠️ Photo failed: '+e.message);return null;}}));
-  const ok=all.filter(Boolean);document.getElementById('upinfo').textContent=ok.length?`✅ ${ok.length} photo${ok.length>1?'s':''} uploaded!`:'';
-  return ok;
-}
+async function uploadPhotoImgBB(entry){const compressed=await compressImage(entry.dataUrl,IMG_MAX_PX,IMG_Q);const form=new FormData();form.append('key',IMGBB_KEY);form.append('image',compressed.split(',')[1]);form.append('name','PM_'+Date.now()+'_'+entry.idx);const resp=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:form});if(!resp.ok)throw new Error('ImgBB HTTP '+resp.status);const data=await resp.json();if(!data.success)throw new Error('ImgBB: '+(data.error?.message||'failed'));return{thumbUrl:data.data.thumb?.url||data.data.display_url,viewUrl:data.data.url_viewer||data.data.url,deleteUrl:data.data.delete_url||''};}
+async function uploadAllPhotos(){const pending=photoQueue.filter(p=>p&&p.state==='pending');if(!pending.length)return[];document.getElementById('upinfo').textContent='📤 Uploading photos...';const all=await Promise.all(pending.map(async entry=>{try{const r=await uploadPhotoImgBB(entry);entry.state='done';return{thumbUrl:r.thumbUrl,viewUrl:r.viewUrl,deleteUrl:r.deleteUrl||''};}catch(e){entry.state='fail';toast('⚠️ Photo failed: '+e.message);return null;}}));const ok=all.filter(Boolean);document.getElementById('upinfo').textContent=ok.length?`✅ ${ok.length} photo${ok.length>1?'s':''} uploaded!`:'';return ok;}
 
 /* ══════════════════════════════════════════
-   SUBMIT PM (maintenance record)
+   SUBMIT PM
 ══════════════════════════════════════════ */
 async function submitPM(){
-  const dept=role==='user'?curDept:(curDept||departments[0]);
-  if(!dept){toast('⚠️ No department selected.');return;}
-  const equip=document.getElementById('fEquip').value;
-  const pic=document.getElementById('fPIC').value;
-  const mtype=document.getElementById('fType').value;
-  const ds=document.getElementById('fDs').value;
-  const df=document.getElementById('fDf').value;
-  const det=document.getElementById('fDet').value.trim();
-  const parts=getSelChips('partsGrid');
-  const eEl=document.getElementById('formErr');
-  const hasPressesFlag=deptHasPresses(dept);
-  if(hasPressesFlag&&!selectedPresses.length){eEl.textContent='⚠️ Please select at least one press.';eEl.style.display='block';return;}
-  const needsHalf=!!(dept&&dept.name.toLowerCase()==='mold die');
-  if(needsHalf&&!selectedHalf){eEl.textContent='⚠️ Please select Top, Bottom or Both.';eEl.style.display='block';return;}
-  const hLbl=selectedHalf?selectedHalf.charAt(0).toUpperCase()+selectedHalf.slice(1):'';
-  const fullEquip=needsHalf&&hLbl?equip+' ('+hLbl+')':equip;
+  const dept=role==='user'?curDept:(curDept||departments[0]);if(!dept){toast('⚠️ No department selected.');return;}
+  const equip=document.getElementById('fEquip').value,pic=document.getElementById('fPIC').value,mtype=document.getElementById('fType').value;
+  const ds=document.getElementById('fDs').value,df=document.getElementById('fDf').value,det=document.getElementById('fDet').value.trim();
+  const parts=getSelChips('partsGrid');const eEl=document.getElementById('formErr');
+  const hasPressesFlag=deptHasPresses(dept);if(hasPressesFlag&&!selectedPresses.length){eEl.textContent='⚠️ Please select at least one press.';eEl.style.display='block';return;}
+  const needsHalf=!!(dept&&dept.name.toLowerCase()==='mold die');if(needsHalf&&!selectedHalf){eEl.textContent='⚠️ Please select Top, Bottom or Both.';eEl.style.display='block';return;}
+  const hLbl=selectedHalf?selectedHalf.charAt(0).toUpperCase()+selectedHalf.slice(1):'';const fullEquip=needsHalf&&hLbl?equip+' ('+hLbl+')':equip;
   if(!equip||!pic||!mtype||!ds||!det){eEl.textContent='⚠️ Fill in all required fields.';eEl.style.display='block';return;}
   if(!parts.length){eEl.textContent='⚠️ Select at least one part (use "NA" if nothing changed).';eEl.style.display='block';return;}
   eEl.style.display='none';
   const btn=document.getElementById('subBtn');btn.disabled=true;btn.textContent='⏳ Saving...';sy('sync');
   try{
-    const uploaded=await uploadAllPhotos();
-    const pressesVal=hasPressesFlag?selectedPresses.join(', '):'';
+    const uploaded=await uploadAllPhotos();const pressesVal=hasPressesFlag?selectedPresses.join(', '):'';
     const r=await jsonp({action:'addRecord',pic,dept:dept.name,equipment:fullEquip,maintenanceType:mtype,presses:pressesVal,dateStart:ds,dateFinish:df||'',details:det,parts:parts.join(', '),photos:JSON.stringify(uploaded)});
-    if(r.status==='ok'){
-      recs.unshift(r.record);
-      ['fEquip','fPIC','fType','fDs','fDf','fDet'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-      document.querySelectorAll('#partsGrid .chip.sel').forEach(c=>c.classList.remove('sel'));
-      showHalfSel(false);showPressSel([]);resetPhotos();sy('ok');toast('✅ PM Record saved!');goSec('recs');
-      // Auto-sync to PM Scheduler if applicable (runs silently in background)
-      pmAutoSyncFromRecord(r.record);
-    }else throw new Error(r.message||'Save failed');
+    if(r.status==='ok'){recs.unshift(r.record);['fEquip','fPIC','fType','fDs','fDf','fDet'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.querySelectorAll('#partsGrid .chip.sel').forEach(c=>c.classList.remove('sel'));showHalfSel(false);showPressSel([]);resetPhotos();sy('ok');toast('✅ PM Record saved!');goSec('recs');pmAutoSyncFromRecord(r.record);}
+    else throw new Error(r.message||'Save failed');
   }catch(e){sy('off');toast('❌ '+e.message);}
   btn.disabled=false;btn.textContent='✔ Submit PM Record';
 }
@@ -1534,79 +1156,36 @@ async function submitPM(){
 /* ══════════════════════════════════════════
    RECORDS
 ══════════════════════════════════════════ */
-function fillFDDs(){
-  const sv=document.getElementById('fFdept').value;
-  mkSel('fFdept','All Departments',departments.map(d=>d.name));
-  mkSelPIC('fFpic','All PIC',pics);
-  document.getElementById('fFdept').value=sv;
-}
+function fillFDDs(){const sv=document.getElementById('fFdept').value;mkSel('fFdept','All Departments',departments.map(d=>d.name));mkSelPIC('fFpic','All PIC',pics);document.getElementById('fFdept').value=sv;}
 function applyF(){
-  const s=(document.getElementById('fSrch')?.value||'').toLowerCase();
-  const fd=document.getElementById('fFdept')?.value||'';
-  const fp=document.getElementById('fFpic')?.value||'';
-  const fs=document.getElementById('fFstat')?.value||'';
-  let rs=[...recs];
-  if(fd)rs=rs.filter(r=>r.dept===fd);if(fp)rs=rs.filter(r=>r.pic===fp);if(fs)rs=rs.filter(r=>r.status===fs);
+  const s=(document.getElementById('fSrch')?.value||'').toLowerCase(),fd=document.getElementById('fFdept')?.value||'',fp=document.getElementById('fFpic')?.value||'',fs=document.getElementById('fFstat')?.value||'';
+  let rs=[...recs];if(fd)rs=rs.filter(r=>r.dept===fd);if(fp)rs=rs.filter(r=>r.pic===fp);if(fs)rs=rs.filter(r=>r.status===fs);
   if(s)rs=rs.filter(r=>[r.id,r.pic,r.dept,r.equipment,r.maintenanceType,r.details,r.parts].some(v=>(v||'').toLowerCase().includes(s)));
   const el=document.getElementById('recList');if(!el)return;
   el.innerHTML=rs.length?rs.map(r=>rCard(r,false)).join(''):'<div class="empty"><div class="ei">🔍</div><h4>No Records Found</h4></div>';
 }
 function rCard(r,mini){
-  const done=r.status==='completed';
-  const pList=(r.parts||'').split(',').map(p=>p.trim()).filter(Boolean);
-  const pTags=pList.map(p=>`<span class="ptag">${esc(p)}</span>`).join('');
-  let photosHTML='';
-  if(!mini){try{const photos=JSON.parse(r.photos||'[]');if(photos.length){photosHTML=`<div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--tx2);margin:8px 0 5px">📷 Photos (${photos.length})</div><div class="photo-thumbs">${photos.map(ph=>`<img class="photo-thumb" src="${esc(ph.thumbUrl||'')}" onclick="openLB('${esc(ph.thumbUrl||'')}','${esc(ph.viewUrl||'')}')" loading="lazy">`).join('')}</div>`;}}catch(e){}}
-  let actions='';
-  if(!mini){
-    actions='<div class="rec-actions">';
-    if(!done)actions+=`<button class="btn btn-grn btn-xs" onclick="openDone('${r.id}')">✅ Mark Done</button>`;
-    else actions+=`<button class="btn btn-warn btn-xs" onclick="reopenRec('${r.id}')">🔄 Reopen</button>`;
-    actions+=`<button class="btn btn-blue btn-xs" onclick="openEdit('${r.id}')">✏️ Edit</button>`;
-    if(role==='admin')actions+=`<button class="btn btn-red btn-xs" onclick="delRec('${r.id}')">🗑️ Delete</button>`;
-    actions+='</div>';
-  }
-  return`<div class="rec${done?' done':''}">
-    <div class="rec-hdr">
-      <div><div class="rec-id">${esc(r.equipment||'—')}</div><div class="rec-sub">👷 ${esc(r.pic)} &nbsp;|&nbsp; 🆔 ${esc(r.id)}${r.presses?` &nbsp;|&nbsp; <span style="color:#58a6ff;">${esc(r.presses)}</span>`:''}</div></div>
-      <span class="sbadge ${done?'s-ok">✅ Done':'s-wip">🔄 WIP'}</span>
-    </div>
+  const done=r.status==='completed';const pList=(r.parts||'').split(',').map(p=>p.trim()).filter(Boolean);const pTags=pList.map(p=>`<span class="ptag">${esc(p)}</span>`).join('');
+  let photosHTML='';if(!mini){try{const photos=JSON.parse(r.photos||'[]');if(photos.length){photosHTML=`<div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--tx2);margin:8px 0 5px">📷 Photos (${photos.length})</div><div class="photo-thumbs">${photos.map(ph=>`<img class="photo-thumb" src="${esc(ph.thumbUrl||'')}" onclick="openLB('${esc(ph.thumbUrl||'')}','${esc(ph.viewUrl||'')}')" loading="lazy">`).join('')}</div>`;}}catch(e){}}
+  let actions='';if(!mini){actions='<div class="rec-actions">';if(!done)actions+=`<button class="btn btn-grn btn-xs" onclick="openDone('${r.id}')">✅ Mark Done</button>`;else actions+=`<button class="btn btn-warn btn-xs" onclick="reopenRec('${r.id}')">🔄 Reopen</button>`;actions+=`<button class="btn btn-blue btn-xs" onclick="openEdit('${r.id}')">✏️ Edit</button>`;if(role==='admin')actions+=`<button class="btn btn-red btn-xs" onclick="delRec('${r.id}')">🗑️ Delete</button>`;actions+='</div>';}
+  return`<div class="rec${done?' done':''}"><div class="rec-hdr"><div><div class="rec-id">${esc(r.equipment||'—')}</div><div class="rec-sub">👷 ${esc(r.pic)} &nbsp;|&nbsp; 🆔 ${esc(r.id)}${r.presses?` &nbsp;|&nbsp; <span style="color:#58a6ff;">${esc(r.presses)}</span>`:''}</div></div><span class="sbadge ${done?'s-ok">✅ Done':'s-wip">🔄 WIP'}</span></div>
     <span class="dept-tag">${deptIcon(r.dept||'')} ${esc(r.dept||'Unknown')}</span>${r.maintenanceType?`<span class="mtype-tag">${esc(r.maintenanceType)}</span>`:''}
-    <div class="rmeta">
-      <div class="rmi">📅 Start: <strong>${fdd(r.dateStart)}</strong></div>
-      ${r.dateFinish?`<div class="rmi">🏁 Finish: <strong>${fdd(r.dateFinish)}</strong></div>`:''}
-    </div>
-    ${!mini?`<div class="rdet">📝 ${esc(r.details)}</div>${pTags?`<div class="parts-tags" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${pTags}</div>`:''}${photosHTML}${actions}`
-    :`${pTags?`<div class="parts-tags" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;">${pTags}</div>`:''}`}
+    <div class="rmeta"><div class="rmi">📅 Start: <strong>${fdd(r.dateStart)}</strong></div>${r.dateFinish?`<div class="rmi">🏁 Finish: <strong>${fdd(r.dateFinish)}</strong></div>`:''}</div>
+    ${!mini?`<div class="rdet">📝 ${esc(r.details)}</div>${pTags?`<div class="parts-tags" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${pTags}</div>`:''}${photosHTML}${actions}`:`${pTags?`<div class="parts-tags" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;">${pTags}</div>`:''}`}
   </div>`;
 }
 function openDone(id){document.getElementById('doneId').value=id;document.getElementById('doneDf').value=new Date().toISOString().split('T')[0];document.getElementById('doneMod').classList.add('show');}
 async function confirmDone(){
-  const id=document.getElementById('doneId').value,df=document.getElementById('doneDf').value;
-  closeMod('doneMod');sy('sync');
-  try{
-    const r=await jsonp({action:'updateStatus',id,newStatus:'completed',dateFinish:df});
-    if(r.status==='ok'){
-      const rec=recs.find(x=>x.id===id);
-      if(rec){
-        rec.status='completed';rec.dateFinish=r.dateFinish;
-        // Use dateFinish as the sync date since that's the actual PM completion date
-        const syncRec={...rec,dateStart:r.dateFinish||rec.dateStart};
-        pmAutoSyncFromRecord(syncRec);
-      }
-      sy('ok');toast('✅ Marked done!');applyF();renderDash();
-    }else throw new Error(r.message);
-  }catch(e){sy('off');toast('❌ '+e.message);}
+  const id=document.getElementById('doneId').value,df=document.getElementById('doneDf').value;closeMod('doneMod');sy('sync');
+  try{const r=await jsonp({action:'updateStatus',id,newStatus:'completed',dateFinish:df});if(r.status==='ok'){const rec=recs.find(x=>x.id===id);if(rec){rec.status='completed';rec.dateFinish=r.dateFinish;const syncRec={...rec,dateStart:r.dateFinish||rec.dateStart};pmAutoSyncFromRecord(syncRec);}sy('ok');toast('✅ Marked done!');applyF();renderDash();}else throw new Error(r.message);}
+  catch(e){sy('off');toast('❌ '+e.message);}
 }
 async function reopenRec(id){sy('sync');try{const r=await jsonp({action:'updateStatus',id,newStatus:'in_progress',dateFinish:''});if(r.status==='ok'){const rec=recs.find(x=>x.id===id);if(rec){rec.status='in_progress';rec.dateFinish='';}sy('ok');toast('🔄 Reopened.');applyF();renderDash();}else throw new Error(r.message);}catch(e){sy('off');toast('❌ '+e.message);}}
 function openEdit(id){
-  const r=recs.find(x=>x.id===id);if(!r)return;
-  const dept=departments.find(d=>d.name===r.dept)||{name:r.dept,equipment:[r.equipment],parts:[]};
+  const r=recs.find(x=>x.id===id);if(!r)return;const dept=departments.find(d=>d.name===r.dept)||{name:r.dept,equipment:[r.equipment],parts:[]};
   document.getElementById('editId').value=id;mkSelPIC('ePIC','— Select —',pics);mkSel('eEquip','— Select —',dept.equipment.map(e=>eqId(e)));mkSel('eType','— Select —',types);
-  document.getElementById('ePIC').value=r.pic;
-  const hm=r.equipment.match(/^(.+) \((Top|Bottom|Both)\)$/i);const baseEquip=hm?hm[1]:r.equipment;const existHalf=hm?hm[2].toLowerCase():null;
-  document.getElementById('eEquip').value=baseEquip;
-  const parsedPresses=r.presses?r.presses.split(', ').map(p=>p.trim()).filter(Boolean):[];
+  document.getElementById('ePIC').value=r.pic;const hm=r.equipment.match(/^(.+) \((Top|Bottom|Both)\)$/i);const baseEquip=hm?hm[1]:r.equipment;const existHalf=hm?hm[2].toLowerCase():null;
+  document.getElementById('eEquip').value=baseEquip;const parsedPresses=r.presses?r.presses.split(', ').map(p=>p.trim()).filter(Boolean):[];
   if(deptHasPresses(dept)){const eq=dept.equipment.find(e=>eqId(e)===baseEquip);showEditPressSel(eq?eqPresses(eq):['Press 1','Press 2','Press 3','Press 4'],parsedPresses);}else showEditPressSel([],[]);
   showEditHalfSel(!!(dept&&dept.name.toLowerCase()==='mold die'),existHalf);
   document.getElementById('eType').value=r.maintenanceType;document.getElementById('eDs').value=r.dateStart;document.getElementById('eDf').value=r.dateFinish||'';document.getElementById('eDet').value=r.details;
@@ -1617,14 +1196,9 @@ function closeEdit(){document.getElementById('editMod').classList.remove('show')
 async function saveEdit(){
   const id=document.getElementById('editId').value,pic=document.getElementById('ePIC').value,eqBase=document.getElementById('eEquip').value;
   const recEdit=recs.find(x=>x.id===id);const deptEdit=recEdit?departments.find(d=>d.name===recEdit.dept):null;
-  const needsHalf2=!!(deptEdit&&deptEdit.name.toLowerCase()==='mold die');
-  const hLbl2=editSelectedHalf?editSelectedHalf.charAt(0).toUpperCase()+editSelectedHalf.slice(1):'';
-  const equip=needsHalf2&&hLbl2?eqBase+' ('+hLbl2+')':eqBase;
-  const mtype=document.getElementById('eType').value,ds=document.getElementById('eDs').value,df=document.getElementById('eDf').value;
-  const det=document.getElementById('eDet').value.trim(),parts=getSelChips('editPartsGrid');
-  const eEl=document.getElementById('editErr');
-  if(!pic||!equip||!mtype||!ds||!det){eEl.textContent='⚠️ All required fields must be filled.';eEl.style.display='block';return;}
-  if(!parts.length){eEl.textContent='⚠️ Select at least one part.';eEl.style.display='block';return;}
+  const needsHalf2=!!(deptEdit&&deptEdit.name.toLowerCase()==='mold die');const hLbl2=editSelectedHalf?editSelectedHalf.charAt(0).toUpperCase()+editSelectedHalf.slice(1):'';const equip=needsHalf2&&hLbl2?eqBase+' ('+hLbl2+')':eqBase;
+  const mtype=document.getElementById('eType').value,ds=document.getElementById('eDs').value,df=document.getElementById('eDf').value,det=document.getElementById('eDet').value.trim(),parts=getSelChips('editPartsGrid');
+  const eEl=document.getElementById('editErr');if(!pic||!equip||!mtype||!ds||!det){eEl.textContent='⚠️ All required fields must be filled.';eEl.style.display='block';return;}if(!parts.length){eEl.textContent='⚠️ Select at least one part.';eEl.style.display='block';return;}
   const btn=document.getElementById('saveEditBtn');btn.disabled=true;btn.textContent='Saving...';sy('sync');
   try{const pressesVal2=deptHasPresses(deptEdit)?editSelectedPresses.join(', '):'';const r=await jsonp({action:'editRecord',id,pic,equipment:equip,maintenanceType:mtype,dateStart:ds,dateFinish:df||'',details:det,parts:parts.join(', '),presses:pressesVal2});if(r.status==='ok'){const idx=recs.findIndex(x=>x.id===id);if(idx>=0)recs[idx]={...recs[idx],...r.record};closeEdit();sy('ok');toast('✅ Updated!');applyF();renderDash();pmAutoSyncFromRecord(recs.find(x=>x.id===id)||r.record);}else throw new Error(r.message||'Edit failed');}
   catch(e){sy('off');toast('❌ '+e.message);}
@@ -1636,46 +1210,20 @@ async function confirmDel(){if(!delId)return;closeMod('delMod');sy('sync');try{c
 /* ══════════════════════════════════════════
    REPORT
 ══════════════════════════════════════════ */
-function fillReportFilters(){
-  const rd=document.getElementById('rFdept'),sv=rd.value;rd.innerHTML='<option value="">All Departments</option>'+departments.map(d=>`<option value="${esc(d.name)}">${esc(d.name)}</option>`).join('');rd.value=sv;
-  onRptDeptChange(true);
-  const rp=document.getElementById('rFpic'),svp=rp.value;rp.innerHTML='<option value="">All PIC</option>'+pics.map(p=>{const n=typeof p==='string'?p:p.name||'';return`<option value="${esc(n)}">${esc(n)}</option>`;}).join('');rp.value=svp;
-  const rm=document.getElementById('rFmtype'),svm=rm.value;rm.innerHTML='<option value="">All Types</option>'+types.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');rm.value=svm;
-}
-function onRptDeptChange(pv){
-  const dn=document.getElementById('rFdept').value,re=document.getElementById('rFequip'),sv=pv?re.value:'';
-  re.innerHTML='<option value="">All Equipment</option>';
-  if(dn){const dept=departments.find(d=>d.name===dn);if(dept)dept.equipment.forEach(e=>{const o=document.createElement('option');o.value=esc(eqId(e));o.textContent=eqId(e);re.appendChild(o);});}
-  else{[...new Set(recs.map(r=>r.equipment).filter(Boolean))].sort().forEach(e=>{const o=document.createElement('option');o.value=esc(e);o.textContent=e;re.appendChild(o);});}
-  re.value=sv;renderReport();
-}
+function fillReportFilters(){const rd=document.getElementById('rFdept'),sv=rd.value;rd.innerHTML='<option value="">All Departments</option>'+departments.map(d=>`<option value="${esc(d.name)}">${esc(d.name)}</option>`).join('');rd.value=sv;onRptDeptChange(true);const rp=document.getElementById('rFpic'),svp=rp.value;rp.innerHTML='<option value="">All PIC</option>'+pics.map(p=>{const n=typeof p==='string'?p:p.name||'';return`<option value="${esc(n)}">${esc(n)}</option>`;}).join('');rp.value=svp;const rm=document.getElementById('rFmtype'),svm=rm.value;rm.innerHTML='<option value="">All Types</option>'+types.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');rm.value=svm;}
+function onRptDeptChange(pv){const dn=document.getElementById('rFdept').value,re=document.getElementById('rFequip'),sv=pv?re.value:'';re.innerHTML='<option value="">All Equipment</option>';if(dn){const dept=departments.find(d=>d.name===dn);if(dept)dept.equipment.forEach(e=>{const o=document.createElement('option');o.value=esc(eqId(e));o.textContent=eqId(e);re.appendChild(o);});}else{[...new Set(recs.map(r=>r.equipment).filter(Boolean))].sort().forEach(e=>{const o=document.createElement('option');o.value=esc(e);o.textContent=e;re.appendChild(o);});}re.value=sv;renderReport();}
 function clearRptFilters(){['rFdept','rFequip','rFpic','rFmtype','rFstat','rFfrom','rFto'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});rptFreqDept='';rptHistDept='';onRptDeptChange(false);}
-function getFilteredRecs(){
-  const dept=document.getElementById('rFdept')?.value||'',equip=document.getElementById('rFequip')?.value||'',from=document.getElementById('rFfrom')?.value||'',to=document.getElementById('rFto')?.value||'',pic=document.getElementById('rFpic')?.value||'',mtype=document.getElementById('rFmtype')?.value||'',stat=document.getElementById('rFstat')?.value||'';
-  return recs.filter(r=>{if(dept&&r.dept!==dept)return false;if(equip&&r.equipment!==equip)return false;if(pic&&r.pic!==pic)return false;if(mtype&&r.maintenanceType!==mtype)return false;if(stat&&r.status!==stat)return false;if(from&&r.dateStart&&r.dateStart<from)return false;if(to&&r.dateStart&&r.dateStart>to)return false;return true;});
-}
-function setFreqDept(d){rptFreqDept=d;renderReport();}
-function setHistDept(d){rptHistDept=d;renderReport();}
-function rptDeptChips(cur,fn){
-  const dn=[...new Set(recs.map(r=>r.dept).filter(Boolean))].sort();if(!dn.length)return'';
-  return`<div class="rpt-dept-chips"><div class="rpt-dept-chip${cur===''?' active':''}" onclick="${fn}('')">All</div>${dn.map(n=>`<div class="rpt-dept-chip${cur===n?' active':''}" onclick="${fn}('${n.replace(/'/g,"\\'")}')">${deptIcon(n)} ${esc(n)}</div>`).join('')}</div>`;
-}
+function getFilteredRecs(){const dept=document.getElementById('rFdept')?.value||'',equip=document.getElementById('rFequip')?.value||'',from=document.getElementById('rFfrom')?.value||'',to=document.getElementById('rFto')?.value||'',pic=document.getElementById('rFpic')?.value||'',mtype=document.getElementById('rFmtype')?.value||'',stat=document.getElementById('rFstat')?.value||'';return recs.filter(r=>{if(dept&&r.dept!==dept)return false;if(equip&&r.equipment!==equip)return false;if(pic&&r.pic!==pic)return false;if(mtype&&r.maintenanceType!==mtype)return false;if(stat&&r.status!==stat)return false;if(from&&r.dateStart&&r.dateStart<from)return false;if(to&&r.dateStart&&r.dateStart>to)return false;return true;});}
+function setFreqDept(d){rptFreqDept=d;renderReport();}function setHistDept(d){rptHistDept=d;renderReport();}
+function rptDeptChips(cur,fn){const dn=[...new Set(recs.map(r=>r.dept).filter(Boolean))].sort();if(!dn.length)return'';return`<div class="rpt-dept-chips"><div class="rpt-dept-chip${cur===''?' active':''}" onclick="${fn}('')">All</div>${dn.map(n=>`<div class="rpt-dept-chip${cur===n?' active':''}" onclick="${fn}('${n.replace(/'/g,"\\'")}')">${deptIcon(n)} ${esc(n)}</div>`).join('')}</div>`;}
 function renderReport(){
-  const filtered=getFilteredRecs();
-  const summaryEl=document.getElementById('reportSummary'),contentEl=document.getElementById('reportContent');
-  if(!summaryEl||!contentEl)return;
+  const filtered=getFilteredRecs();const summaryEl=document.getElementById('reportSummary'),contentEl=document.getElementById('reportContent');if(!summaryEl||!contentEl)return;
   if(!filtered.length){summaryEl.innerHTML='';contentEl.innerHTML='<div class="empty"><div class="ei">📄</div><h4>No records match filters</h4></div>';return;}
-  const done=filtered.filter(r=>r.status==='completed').length,wip=filtered.length-done;
-  const equips=[...new Set(filtered.map(r=>r.equipment).filter(Boolean))];const depts=[...new Set(filtered.map(r=>r.dept).filter(Boolean))];
-  const freqMap={};filtered.forEach(r=>{if(r.equipment)freqMap[r.equipment]=(freqMap[r.equipment]||0)+1;});
-  const topEquip=Object.entries(freqMap).sort((a,b)=>b[1]-a[1])[0];
+  const done=filtered.filter(r=>r.status==='completed').length,wip=filtered.length-done;const equips=[...new Set(filtered.map(r=>r.equipment).filter(Boolean))];const depts=[...new Set(filtered.map(r=>r.dept).filter(Boolean))];const freqMap={};filtered.forEach(r=>{if(r.equipment)freqMap[r.equipment]=(freqMap[r.equipment]||0)+1;});const topEquip=Object.entries(freqMap).sort((a,b)=>b[1]-a[1])[0];
   summaryEl.innerHTML=`<div class="rpt-summary-grid"><div class="rpt-scard"><div class="rn">${filtered.length}</div><div class="rl">Total Services</div></div><div class="rpt-scard"><div class="rn" style="color:#3fb950">${done}</div><div class="rl">Completed</div></div><div class="rpt-scard"><div class="rn">${wip}</div><div class="rl">In Progress</div></div><div class="rpt-scard"><div class="rn">${equips.length}</div><div class="rl">Equipment</div></div><div class="rpt-scard"><div class="rn">${depts.length}</div><div class="rl">Departments</div></div>${topEquip?`<div class="rpt-scard"><div class="rn" style="font-size:18px;line-height:1.3">${esc(topEquip[0])}</div><div class="rl">Most Serviced (${topEquip[1]}x)</div></div>`:''}</div>`;
-  const freqRecs=rptFreqDept?filtered.filter(r=>r.dept===rptFreqDept):filtered;
-  const freqMapF={};freqRecs.forEach(r=>{if(r.equipment)freqMapF[r.equipment]=(freqMapF[r.equipment]||0)+1;});
-  const maxFreq=Math.max(...Object.values(freqMapF),1);
+  const freqRecs=rptFreqDept?filtered.filter(r=>r.dept===rptFreqDept):filtered;const freqMapF={};freqRecs.forEach(r=>{if(r.equipment)freqMapF[r.equipment]=(freqMapF[r.equipment]||0)+1;});const maxFreq=Math.max(...Object.values(freqMapF),1);
   const freqRows=Object.entries(freqMapF).sort((a,b)=>b[1]-a[1]).map(([equip,cnt])=>{const pct=Math.round((cnt/maxFreq)*100);const dn=freqRecs.find(r=>r.equipment===equip)?.dept||'';return`<tr><td><strong>${esc(equip)}</strong></td><td><span class="dept-tag" style="font-size:10px;">${deptIcon(dn)} ${esc(dn)}</span></td><td style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:800;color:var(--acc);">${cnt}</td><td style="min-width:80px;"><div style="height:6px;background:rgba(240,165,0,.2);border-radius:3px;"><div style="width:${pct}%;height:6px;background:var(--acc);border-radius:3px;"></div></div></td></tr>`;}).join('');
-  const histRecs=rptHistDept?filtered.filter(r=>r.dept===rptHistDept):filtered;
-  const grouped={};histRecs.forEach(r=>{const key=r.equipment||'Unknown';if(!grouped[key])grouped[key]=[];grouped[key].push(r);});
+  const histRecs=rptHistDept?filtered.filter(r=>r.dept===rptHistDept):filtered;const grouped={};histRecs.forEach(r=>{const key=r.equipment||'Unknown';if(!grouped[key])grouped[key]=[];grouped[key].push(r);});
   const historyHTML=Object.entries(grouped).map(([equip,rs])=>{const dn=rs[0]?.dept||'';const doneCount=rs.filter(r=>r.status==='completed').length;const rows=rs.map(r=>{const parts=(r.parts||'').split(',').map(p=>p.trim()).filter(Boolean);const ptags=parts.map(p=>`<span class="ptag" style="font-size:10px;">${esc(p)}</span>`).join(' ');return`<tr><td>${fdd(r.dateStart)}</td><td>${r.dateFinish?fdd(r.dateFinish):'<span style="color:var(--tx2);">—</span>'}</td><td>${esc(r.pic)}</td><td>${esc(r.maintenanceType)}</td><td style="max-width:180px;font-size:12px;">${esc(r.details)}</td><td style="max-width:140px;">${ptags||'<span style="color:var(--tx2);font-size:11px;">—</span>'}</td><td><span class="sbadge ${r.status==='completed'?'s-ok">✅ Done':'s-wip">🔄 WIP'}</span></td></tr>`;}).join('');return`<div class="rpt-equip-block"><div class="rpt-equip-hdr"><div><div class="rpt-equip-name">${esc(equip)}</div><div style="margin-top:4px;"><span class="dept-tag" style="font-size:10px;">${deptIcon(dn)} ${esc(dn)}</span></div></div><div style="text-align:right;"><div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--acc);">${rs.length}x</div><div style="font-size:11px;color:var(--tx2);">${doneCount} done · ${rs.length-doneCount} WIP</div></div></div><div style="overflow-x:auto;"><table class="rpt-table"><thead><tr><th>Date Start</th><th>Finish</th><th>PIC</th><th>Maint. Type</th><th>Findings</th><th>Parts</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;}).join('');
   contentEl.innerHTML=`<div class="block"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;padding-bottom:10px;border-bottom:1px solid var(--bor);margin-bottom:0;"><h3 style="margin:0;padding:0;border:none;">📊 Service Frequency</h3><span style="font-size:11px;color:var(--tx2);">${Object.keys(freqMapF).length} equipment</span></div>${rptDeptChips(rptFreqDept,'setFreqDept')}<div class="rpt-freq-scroll" style="overflow-x:auto;border:1px solid var(--bor);border-radius:8px;margin-top:8px;"><table class="rpt-table"><thead><tr><th>Equipment</th><th>Department</th><th>Count</th><th>Frequency</th></tr></thead><tbody>${freqRows||'<tr><td colspan="4" style="text-align:center;color:var(--tx2);padding:20px;">No data</td></tr>'}</tbody></table></div></div><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px;"><div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">📋 Service History</div><span style="font-size:11px;color:var(--tx2);">${histRecs.length} records</span></div>${rptDeptChips(rptHistDept,'setHistDept')}<div style="margin-top:10px;">${historyHTML||'<div class="empty"><div class="ei">📋</div><h4>No records.</h4></div>'}</div>`;
 }
@@ -1684,25 +1232,7 @@ function renderReport(){
    MANAGE
 ══════════════════════════════════════════ */
 function renderMgmt(){renderDeptManageList();renderPICList();rL('typeList',types,'🗂️',i=>`delType(${i})`);}
-function renderDeptManageList(){
-  const el=document.getElementById('deptManageList');
-  if(!departments.length){el.innerHTML='<p style="color:var(--tx2);font-size:13px;">No departments yet.</p>';return;}
-  el.innerHTML=departments.map((d,di)=>`<div class="dept-manage-card">
-    <div class="dmc-hdr" onclick="toggleDMC(${di})"><h4>${deptIcon(d.name)} ${esc(d.name)}</h4>
-      <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:11px;color:var(--tx2);">${d.equipment.length} equip</span><button class="btn btn-red btn-xs" onclick="event.stopPropagation();deleteDept(${di})">Remove</button><span id="dmc-arrow-${di}" style="color:var(--tx2);">▶</span></div>
-    </div>
-    <div class="dmc-body" id="dmc-body-${di}">
-      <div style="margin-top:12px;"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--tx2);margin-bottom:8px;">Equipment</div>
-        <div class="add-r"><input type="text" id="addEquipIn-${di}" placeholder="e.g. MD-006..."><button class="btn btn-grn btn-xs" onclick="addEquipment(${di})">+ Add</button></div>
-        <div class="mlist">${d.equipment.length?d.equipment.map((e,ei)=>`<div class="mitem"><span>🔧 ${esc(eqId(e))}</span><button class="btn btn-red btn-xs" onclick="deleteEquipment(${di},${ei})">Remove</button></div>`).join(''):'<p style="color:var(--tx2);font-size:13px;">None yet.</p>'}</div>
-      </div>
-      <div style="margin-top:12px;"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--tx2);margin-bottom:8px;">Parts / Tools</div>
-        <div class="add-r"><input type="text" id="addPartIn-${di}" placeholder="e.g. Spring..."><button class="btn btn-grn btn-xs" onclick="addDeptPart(${di})">+ Add</button></div>
-        <div class="mlist">${d.parts.map((p,pi)=>`<div class="mitem"><span>🔩 ${esc(p)}</span><button class="btn btn-red btn-xs" onclick="deleteDeptPart(${di},${pi})">Remove</button></div>`).join('')||'<p style="color:var(--tx2);font-size:13px;">None yet.</p>'}</div>
-      </div>
-    </div>
-  </div>`).join('');
-}
+function renderDeptManageList(){const el=document.getElementById('deptManageList');if(!departments.length){el.innerHTML='<p style="color:var(--tx2);font-size:13px;">No departments yet.</p>';return;}el.innerHTML=departments.map((d,di)=>`<div class="dept-manage-card"><div class="dmc-hdr" onclick="toggleDMC(${di})"><h4>${deptIcon(d.name)} ${esc(d.name)}</h4><div style="display:flex;align-items:center;gap:8px;"><span style="font-size:11px;color:var(--tx2);">${d.equipment.length} equip</span><button class="btn btn-red btn-xs" onclick="event.stopPropagation();deleteDept(${di})">Remove</button><span id="dmc-arrow-${di}" style="color:var(--tx2);">▶</span></div></div><div class="dmc-body" id="dmc-body-${di}"><div style="margin-top:12px;"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--tx2);margin-bottom:8px;">Equipment</div><div class="add-r"><input type="text" id="addEquipIn-${di}" placeholder="e.g. MD-006..."><button class="btn btn-grn btn-xs" onclick="addEquipment(${di})">+ Add</button></div><div class="mlist">${d.equipment.length?d.equipment.map((e,ei)=>`<div class="mitem"><span>🔧 ${esc(eqId(e))}</span><button class="btn btn-red btn-xs" onclick="deleteEquipment(${di},${ei})">Remove</button></div>`).join(''):'<p style="color:var(--tx2);font-size:13px;">None yet.</p>'}</div></div><div style="margin-top:12px;"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--tx2);margin-bottom:8px;">Parts / Tools</div><div class="add-r"><input type="text" id="addPartIn-${di}" placeholder="e.g. Spring..."><button class="btn btn-grn btn-xs" onclick="addDeptPart(${di})">+ Add</button></div><div class="mlist">${d.parts.map((p,pi)=>`<div class="mitem"><span>🔩 ${esc(p)}</span><button class="btn btn-red btn-xs" onclick="deleteDeptPart(${di},${pi})">Remove</button></div>`).join('')||'<p style="color:var(--tx2);font-size:13px;">None yet.</p>'}</div></div></div></div>`).join('');}
 function toggleDMC(di){const body=document.getElementById('dmc-body-'+di),arrow=document.getElementById('dmc-arrow-'+di);const open=body.classList.toggle('open');if(arrow)arrow.textContent=open?'▼':'▶';}
 async function addDept(){const v=document.getElementById('addDeptIn').value.trim();if(!v)return;if(departments.some(d=>d.name.toLowerCase()===v.toLowerCase())){toast('⚠️ Already exists.');return;}sy('sync');try{const r=await jsonp({action:'addDept',deptName:v});if(r.status==='ok'){departments=r.departments;document.getElementById('addDeptIn').value='';renderDeptManageList();sy('ok');toast('✅ Department added!');}else toast('⚠️ '+(r.message||'Failed'));}catch(e){sy('off');toast('❌ '+e.message);}}
 async function deleteDept(di){if(!confirm('Remove department "'+departments[di].name+'"?'))return;sy('sync');try{const r=await jsonp({action:'deleteDept',deptName:departments[di].name});if(r.status==='ok'){departments=r.departments;renderDeptManageList();sy('ok');toast('🗑️ Removed.');}else toast('⚠️ '+(r.message||'Failed'));}catch(e){sy('off');toast('❌ '+e.message);}}
@@ -1729,15 +1259,10 @@ async function saveChangePwd(){
 ══════════════════════════════════════════ */
 function pmIsSlotDone(moldId,wkNum){return pmHistory.some(h=>h.moldId===moldId&&h.scheduledWkNum===wkNum&&h.fiscalYear===26);}
 function pmGetMoldStatus(m){
-  const sw=m.scheduledWeeks||[];
-  if(!sw.length)return{label:"NOT SET",color:"#6B7280",bg:"#6B728018",slots:[]};
-  const slots=sw.map(wkNum=>{const fwk=600+wkNum,done=pmIsSlotDone(m.id,wkNum);let slotStatus;
-    if(done)slotStatus="DONE";else if(fwk<CURRENT_WK)slotStatus="OVERDUE";else if(fwk===CURRENT_WK)slotStatus="DUE NOW";else if(fwk===CURRENT_WK+1)slotStatus="DUE SOON";else slotStatus="UPCOMING";
-    return{wkNum,fwk,done,slotStatus};});
+  const sw=m.scheduledWeeks||[];if(!sw.length)return{label:"NOT SET",color:"#6B7280",bg:"#6B728018",slots:[]};
+  const slots=sw.map(wkNum=>{const fwk=600+wkNum,done=pmIsSlotDone(m.id,wkNum);let slotStatus;if(done)slotStatus="DONE";else if(fwk<CURRENT_WK)slotStatus="OVERDUE";else if(fwk===CURRENT_WK)slotStatus="DUE NOW";else if(fwk===CURRENT_WK+1)slotStatus="DUE SOON";else slotStatus="UPCOMING";return{wkNum,fwk,done,slotStatus};});
   const overdue=slots.filter(s=>s.slotStatus==="OVERDUE"),dueNow=slots.filter(s=>s.slotStatus==="DUE NOW"),dueSoon=slots.filter(s=>s.slotStatus==="DUE SOON");
-  if(overdue.length>0)return{label:"OVERDUE",color:"#FF3B30",bg:"#FF3B3018",slots,overdue};
-  if(dueNow.length>0)return{label:"DUE NOW",color:"#FF9500",bg:"#FF950018",slots,dueNow};
-  if(dueSoon.length>0)return{label:"DUE SOON",color:"#FFCC00",bg:"#FFCC0018",slots,dueSoon};
+  if(overdue.length>0)return{label:"OVERDUE",color:"#FF3B30",bg:"#FF3B3018",slots,overdue};if(dueNow.length>0)return{label:"DUE NOW",color:"#FF9500",bg:"#FF950018",slots,dueNow};if(dueSoon.length>0)return{label:"DUE SOON",color:"#FFCC00",bg:"#FFCC0018",slots,dueSoon};
   return{label:"OK",color:"#30D158",bg:"#30D15818",slots};
 }
 
@@ -1745,75 +1270,24 @@ function pmGetMoldStatus(m){
    PM DASHBOARD
 ══════════════════════════════════════════ */
 const pmDashOpen={overdue:true,duenow:true,duesoon:false,ok:false,notset:false};
-function pmToggleDash(key){
-  pmDashOpen[key]=!pmDashOpen[key];
-  const body=document.getElementById('pmdash-body-'+key),chev=document.getElementById('pmdash-chev-'+key);
-  if(body)body.style.display=pmDashOpen[key]?'grid':'none';if(chev)chev.textContent=pmDashOpen[key]?'▼':'▶';
-}
+function pmToggleDash(key){pmDashOpen[key]=!pmDashOpen[key];const body=document.getElementById('pmdash-body-'+key),chev=document.getElementById('pmdash-chev-'+key);if(body)body.style.display=pmDashOpen[key]?'grid':'none';if(chev)chev.textContent=pmDashOpen[key]?'▼':'▶';}
 function renderPMDashboard(){
   const cur=getWk(CURRENT_WK);
   const addBtn=role==='admin'?`<button onclick="pmOpenAddModal()" class="btn btn-pm" style="padding:9px 16px;font-size:13px;white-space:nowrap;">+ Add Mold</button>`:'';
   const refreshBtn=`<button onclick="pmRefresh()" class="btn btn-ghost btn-sm" style="white-space:nowrap;">🔄 Refresh</button>`;
-  document.getElementById('pm-wk-banner').innerHTML=`
-    <div style="width:40px;height:40px;border-radius:10px;background:rgba(255,149,0,.15);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📅</div>
-    <div style="flex:1;">
-      <div style="color:var(--pm-acc);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Current Fiscal Week · ${currentSchedType?.label||'PM Scheduler'} · Google Sheets</div>
-      <div style="font-size:18px;font-weight:800;margin-top:3px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;">WK${CURRENT_WK} (Week ${CURRENT_WKNUM}) · ${cur?cur.mth+' '+cur.period+' · '+cur.qtr:''}</div>
-      <div style="color:var(--tx2);font-size:13px;margin-top:2px;">Sun ${cur?.sun} – Sat ${cur?.sat} · <b style="color:var(--tx);">${pmMolds.length}</b> molds tracked</div>
-    </div>
-    <div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;">${refreshBtn}${addBtn}</div>`;
-  const overdue=pmMolds.filter(m=>pmGetMoldStatus(m).label==="OVERDUE");
-  const dueNow=pmMolds.filter(m=>pmGetMoldStatus(m).label==="DUE NOW");
-  const dueSoon=pmMolds.filter(m=>pmGetMoldStatus(m).label==="DUE SOON");
-  const ok=pmMolds.filter(m=>pmGetMoldStatus(m).label==="OK");
-  const notSet=pmMolds.filter(m=>pmGetMoldStatus(m).label==="NOT SET");
-  function pmDashCard(key,label,emoji,color,list,showDone){
-    const isOpen=pmDashOpen[key];
-    const emptyMsg=key==='notset'?"All molds configured ✓":"No molds in this category 🎉";
-    const rows=list.length?list.map(m=>pmMoldRowDash(m,showDone)).join(''):`<div style="padding:20px;text-align:center;color:var(--tx2);font-size:13px;">${emptyMsg}</div>`;
-    return`<div class="pm-dash-card" style="border-left:4px solid ${color};">
-      <div class="pm-dash-card-hdr" onclick="pmToggleDash('${key}')">
-        <div style="width:46px;height:46px;border-radius:11px;background:${color}18;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${emoji}</div>
-        <div style="flex:1;"><div style="font-size:12px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:1px;">${label}</div>
-          <div style="font-size:30px;font-weight:900;color:${list.length>0?color:'var(--bor)'};line-height:1.1;margin-top:2px;font-family:'Barlow Condensed',sans-serif;">${list.length} <span style="font-size:13px;font-weight:500;color:var(--tx2);">mold${list.length!==1?'s':''}</span></div>
-        </div>
-        <span id="pmdash-chev-${key}" style="color:var(--tx2);">${isOpen?'▼':'▶'}</span>
-      </div>
-      <div id="pmdash-body-${key}" class="pm-dash-card-body" style="display:${isOpen?'grid':'none'};">${rows}</div>
-    </div>`;
-  }
-  document.getElementById('pm-dash-content').innerHTML=
-    pmDashCard("overdue","⛔ Overdue PM","⛔","#FF3B30",overdue,true)+
-    pmDashCard("duenow","🔧 Due This Week","🔧","#FF9500",dueNow,true)+
-    pmDashCard("duesoon","⏰ Due Soon","⏰","#FFCC00",dueSoon,false)+
-    pmDashCard("ok","✅ Up to Date","✅","#30D158",ok,false)+
-    pmDashCard("notset","⚙ Not Configured","⚙","#6B7280",notSet,false);
+  document.getElementById('pm-wk-banner').innerHTML=`<div style="width:40px;height:40px;border-radius:10px;background:rgba(255,149,0,.15);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📅</div><div style="flex:1;"><div style="color:var(--pm-acc);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Current Fiscal Week · ${currentSchedType?.label||'PM Scheduler'} · Google Sheets</div><div style="font-size:18px;font-weight:800;margin-top:3px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;">WK${CURRENT_WK} (Week ${CURRENT_WKNUM}) · ${cur?cur.mth+' '+cur.period+' · '+cur.qtr:''}</div><div style="color:var(--tx2);font-size:13px;margin-top:2px;">Sun ${cur?.sun} – Sat ${cur?.sat} · <b style="color:var(--tx);">${pmMolds.length}</b> molds tracked</div></div><div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;">${refreshBtn}${addBtn}</div>`;
+  const overdue=pmMolds.filter(m=>pmGetMoldStatus(m).label==="OVERDUE"),dueNow=pmMolds.filter(m=>pmGetMoldStatus(m).label==="DUE NOW"),dueSoon=pmMolds.filter(m=>pmGetMoldStatus(m).label==="DUE SOON"),ok=pmMolds.filter(m=>pmGetMoldStatus(m).label==="OK"),notSet=pmMolds.filter(m=>pmGetMoldStatus(m).label==="NOT SET");
+  function pmDashCard(key,label,emoji,color,list,showDone){const isOpen=pmDashOpen[key];const emptyMsg=key==='notset'?"All molds configured ✓":"No molds in this category 🎉";const rows=list.length?list.map(m=>pmMoldRowDash(m,showDone)).join(''):`<div style="padding:20px;text-align:center;color:var(--tx2);font-size:13px;">${emptyMsg}</div>`;return`<div class="pm-dash-card" style="border-left:4px solid ${color};"><div class="pm-dash-card-hdr" onclick="pmToggleDash('${key}')"><div style="width:46px;height:46px;border-radius:11px;background:${color}18;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${emoji}</div><div style="flex:1;"><div style="font-size:12px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:1px;">${label}</div><div style="font-size:30px;font-weight:900;color:${list.length>0?color:'var(--bor)'};line-height:1.1;margin-top:2px;font-family:'Barlow Condensed',sans-serif;">${list.length} <span style="font-size:13px;font-weight:500;color:var(--tx2);">mold${list.length!==1?'s':''}</span></div></div><span id="pmdash-chev-${key}" style="color:var(--tx2);">${isOpen?'▼':'▶'}</span></div><div id="pmdash-body-${key}" class="pm-dash-card-body" style="display:${isOpen?'grid':'none'};">${rows}</div></div>`;}
+  document.getElementById('pm-dash-content').innerHTML=pmDashCard("overdue","⛔ Overdue PM","⛔","#FF3B30",overdue,true)+pmDashCard("duenow","🔧 Due This Week","🔧","#FF9500",dueNow,true)+pmDashCard("duesoon","⏰ Due Soon","⏰","#FFCC00",dueSoon,false)+pmDashCard("ok","✅ Up to Date","✅","#30D158",ok,false)+pmDashCard("notset","⚙ Not Configured","⚙","#6B7280",notSet,false);
 }
-async function pmRefresh(){
-  load('Refreshing PM data...');
-  await pmLoadFromSheets();
-  unload();
-  pmShowTab(pmActiveSec);
-}
-
+async function pmRefresh(){load('Refreshing PM data...');await pmLoadFromSheets();unload();pmShowTab(pmActiveSec);}
 function pmMoldRowDash(m,showDone){
-  const st=pmGetMoldStatus(m);const isNotSet=st.label==="NOT SET";
-  const sc={"OVERDUE":"#FF3B30","DUE NOW":"#FF9500","DUE SOON":"#FFCC00",UPCOMING:"#374151"};
-  const pendingSlots=(st.slots||[]).filter(s=>s.slotStatus!=="DONE");const doneSlots=(st.slots||[]).filter(s=>s.slotStatus==="DONE");
-  const slotChips=!isNotSet?(pendingSlots.slice(0,4).map(s=>{const cal=getWk(s.fwk);return`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid ${(sc[s.slotStatus]||"#374151")}44;color:${sc[s.slotStatus]||"#6B7280"};background:${(sc[s.slotStatus]||"#374151")}18;font-family:'DM Mono',monospace;">Wk${s.wkNum}${cal?' '+cal.mth:''} ${s.slotStatus==="OVERDUE"?"⚠":s.slotStatus==="DUE NOW"?"🔧":""}</span>`;}).join('')+
-    doneSlots.map(s=>`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid #30D15833;color:#30D158;background:#30D15810;font-family:'DM Mono',monospace;">Wk${s.wkNum} ✓</span>`).join('')):'';
+  const st=pmGetMoldStatus(m);const isNotSet=st.label==="NOT SET";const sc={"OVERDUE":"#FF3B30","DUE NOW":"#FF9500","DUE SOON":"#FFCC00",UPCOMING:"#374151"};
+  const pendingSlots=(st.slots||[]).filter(s=>s.slotStatus!=="DONE"),doneSlots=(st.slots||[]).filter(s=>s.slotStatus==="DONE");
+  const slotChips=!isNotSet?(pendingSlots.slice(0,4).map(s=>{const cal=getWk(s.fwk);return`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid ${(sc[s.slotStatus]||"#374151")}44;color:${sc[s.slotStatus]||"#6B7280"};background:${(sc[s.slotStatus]||"#374151")}18;font-family:'DM Mono',monospace;">Wk${s.wkNum}${cal?' '+cal.mth:''} ${s.slotStatus==="OVERDUE"?"⚠":s.slotStatus==="DUE NOW"?"🔧":""}</span>`;}).join('')+doneSlots.map(s=>`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid #30D15833;color:#30D158;background:#30D15810;font-family:'DM Mono',monospace;">Wk${s.wkNum} ✓</span>`).join('')):'';
   const doneBtn=showDone&&!isNotSet?`<button onclick="pmOpenDoneModal(${m.id})" style="background:linear-gradient(135deg,#30D158,#25a244);border:none;border-radius:10px;padding:8px 14px;color:#fff;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0;">✅ Done</button>`:'';
   const configBtn=isNotSet&&role==='admin'?`<button onclick="pmOpenEditModal(${m.id})" style="background:rgba(255,149,0,.15);border:1px solid rgba(255,149,0,.3);color:var(--pm-acc);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-weight:700;">⚙ Configure</button>`:'';
-  return`<div class="pm-mold-row" style="border-left:3px solid ${st.color};">
-    <div style="flex:1;min-width:160px;">
-      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px;">
-        <span style="font-weight:700;font-size:13px;font-family:'DM Mono',monospace;">${esc(m.name)}</span>
-        ${m.machine?`<span style="font-size:11px;background:var(--sur2);color:var(--tx2);padding:2px 7px;border-radius:6px;">${esc(m.machine)}</span>`:''}
-        ${configBtn}
-      </div>
-      ${isNotSet?`<div style="color:var(--tx2);font-size:11px;font-style:italic;">No PM weeks configured</div>`:`<div style="display:flex;gap:5px;flex-wrap:wrap;">${slotChips}</div>`}
-    </div>${doneBtn}
-  </div>`;
+  return`<div class="pm-mold-row" style="border-left:3px solid ${st.color};"><div style="flex:1;min-width:160px;"><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px;"><span style="font-weight:700;font-size:13px;font-family:'DM Mono',monospace;">${esc(m.name)}</span>${m.machine?`<span style="font-size:11px;background:var(--sur2);color:var(--tx2);padding:2px 7px;border-radius:6px;">${esc(m.machine)}</span>`:''}${configBtn}</div>${isNotSet?`<div style="color:var(--tx2);font-size:11px;font-style:italic;">No PM weeks configured</div>`:`<div style="display:flex;gap:5px;flex-wrap:wrap;">${slotChips}</div>`}</div>${doneBtn}</div>`;
 }
 
 /* ══════════════════════════════════════════
@@ -1824,42 +1298,18 @@ function renderPMMolds(){
   document.getElementById('pmMoldsHdrBtns').innerHTML=addBtn;
   const filters=[{k:'all',l:`All (${pmMolds.length})`},{k:'overdue',l:'Overdue'},{k:'duenow',l:'Due Now'},{k:'duesoon',l:'Due Soon'},{k:'ok',l:'OK'},{k:'notset',l:'Not Set'}];
   document.getElementById('pm-filter-btns').innerHTML=filters.map(f=>`<button onclick="pmSetFilter('${f.k}')" class="pm-filter-btn${pmActiveFilter===f.k?' active':''}">${f.l}</button>`).join('');
-  const search=(document.getElementById('pm-mold-search')||{}).value||'';
-  const order={OVERDUE:0,"DUE NOW":1,"DUE SOON":2,OK:3,"NOT SET":4};
-  let filtered=[...pmMolds]
-    .filter(m=>{if(pmActiveFilter==='all')return true;const lbl=pmGetMoldStatus(m).label.toLowerCase().replace(/ /g,'');return lbl===pmActiveFilter;})
-    .filter(m=>!search||m.name.toLowerCase().includes(search.toLowerCase())||(m.group&&m.group.toLowerCase().includes(search.toLowerCase())))
-    .sort((a,b)=>(order[pmGetMoldStatus(a).label]||9)-(order[pmGetMoldStatus(b).label]||9));
-  const groups=[...new Set(filtered.map(m=>m.group||'Other'))].sort();
-  let html='';
+  const search=(document.getElementById('pm-mold-search')||{}).value||'';const order={OVERDUE:0,"DUE NOW":1,"DUE SOON":2,OK:3,"NOT SET":4};
+  let filtered=[...pmMolds].filter(m=>{if(pmActiveFilter==='all')return true;const lbl=pmGetMoldStatus(m).label.toLowerCase().replace(/ /g,'');return lbl===pmActiveFilter;}).filter(m=>!search||m.name.toLowerCase().includes(search.toLowerCase())||(m.group&&m.group.toLowerCase().includes(search.toLowerCase()))).sort((a,b)=>(order[pmGetMoldStatus(a).label]||9)-(order[pmGetMoldStatus(b).label]||9));
+  const groups=[...new Set(filtered.map(m=>m.group||'Other'))].sort();let html='';
   groups.forEach(g=>{const gMolds=filtered.filter(m=>(m.group||'Other')===g);html+=`<div class="group-header"><span>${g}</span><span style="color:var(--tx2);font-size:11px;font-weight:500;">${gMolds.length} die${gMolds.length>1?'s':''}</span></div>`;html+=gMolds.map(m=>pmFullMoldRow(m)).join('');});
   document.getElementById('pm-molds-list').innerHTML=html||`<div class="empty"><div class="ei">🔍</div><h4>No results found</h4></div>`;
 }
 function pmSetFilter(f){pmActiveFilter=f;renderPMMolds();}
-
 function pmFullMoldRow(m){
-  const st=pmGetMoldStatus(m);const isNotSet=st.label==="NOT SET";
-  const sc={"OVERDUE":"#FF3B30","DUE NOW":"#FF9500","DUE SOON":"#FFCC00",UPCOMING:"#9CA3AF",DONE:"#30D158"};
+  const st=pmGetMoldStatus(m);const isNotSet=st.label==="NOT SET";const sc={"OVERDUE":"#FF3B30","DUE NOW":"#FF9500","DUE SOON":"#FFCC00",UPCOMING:"#9CA3AF",DONE:"#30D158"};
   const chips=!isNotSet?(st.slots||[]).map(s=>{const cal=getWk(s.fwk);const icon=s.slotStatus==="DONE"?" ✓":s.slotStatus==="OVERDUE"?" ⚠":s.slotStatus==="DUE NOW"?" 🔧":"";return`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid ${(sc[s.slotStatus]||"#374151")}44;color:${sc[s.slotStatus]||"#6B7280"};background:${(sc[s.slotStatus]||"#374151")}18;font-family:'DM Mono',monospace;">Wk${s.wkNum}${cal?' '+cal.mth:''}${icon}</span>`;}).join(''):'';
-  const actionBtns=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
-    ${!isNotSet?`<button onclick="pmOpenDoneModal(${m.id})" style="background:rgba(48,209,88,.15);border:1px solid rgba(48,209,88,.3);color:#30D158;border-radius:8px;padding:6px 11px;cursor:pointer;font-size:12px;font-weight:600;">✅ Done</button>`:''}
-    ${role==='admin'?`<button onclick="pmOpenEditModal(${m.id})" style="background:rgba(255,149,0,.12);border:1px solid rgba(255,149,0,.3);color:var(--pm-acc);border-radius:8px;padding:6px 9px;cursor:pointer;font-size:12px;">✏</button>
-    <button onclick="pmDeleteMold(${m.id})" style="background:rgba(218,54,51,.12);border:1px solid rgba(218,54,51,.3);color:var(--red);border-radius:8px;padding:6px 9px;cursor:pointer;font-size:12px;">🗑</button>`:''}
-  </div>`;
-  return`<div style="background:var(--sur);border:1px solid var(--bor);border-left:3px solid ${st.color};border-radius:12px;padding:13px 15px;${isNotSet?'opacity:0.75;':''}">
-    <div style="display:flex;align-items:flex-start;gap:12px;">
-      <div style="width:36px;height:36px;border-radius:9px;background:${st.bg};display:flex;align-items:center;justify-content:center;color:${st.color};flex-shrink:0;margin-top:2px;">🔧</div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px;">
-          <span style="font-weight:700;font-size:13px;font-family:'DM Mono',monospace;">${esc(m.name)}</span>
-          <span class="pm-badge" style="background:${st.bg};color:${st.color};border:1px solid ${st.color}44;">${st.label}</span>
-          ${m.machine?`<span style="font-size:11px;background:var(--sur2);color:var(--tx2);padding:2px 7px;border-radius:6px;">${esc(m.machine)}</span>`:''}
-        </div>
-        ${isNotSet?`<div style="color:var(--tx2);font-size:11px;font-style:italic;">No scheduled weeks${role==='admin'?' — click ✏ to configure':''}</div>`:`<div style="display:flex;gap:5px;flex-wrap:wrap;">${chips}</div>`}
-        ${actionBtns}
-      </div>
-    </div>
-  </div>`;
+  const actionBtns=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${!isNotSet?`<button onclick="pmOpenDoneModal(${m.id})" style="background:rgba(48,209,88,.15);border:1px solid rgba(48,209,88,.3);color:#30D158;border-radius:8px;padding:6px 11px;cursor:pointer;font-size:12px;font-weight:600;">✅ Done</button>`:''}${role==='admin'?`<button onclick="pmOpenEditModal(${m.id})" style="background:rgba(255,149,0,.12);border:1px solid rgba(255,149,0,.3);color:var(--pm-acc);border-radius:8px;padding:6px 9px;cursor:pointer;font-size:12px;">✏</button><button onclick="pmDeleteMold(${m.id})" style="background:rgba(218,54,51,.12);border:1px solid rgba(218,54,51,.3);color:var(--red);border-radius:8px;padding:6px 9px;cursor:pointer;font-size:12px;">🗑</button>`:''}</div>`;
+  return`<div style="background:var(--sur);border:1px solid var(--bor);border-left:3px solid ${st.color};border-radius:12px;padding:13px 15px;${isNotSet?'opacity:0.75;':''}"><div style="display:flex;align-items:flex-start;gap:12px;"><div style="width:36px;height:36px;border-radius:9px;background:${st.bg};display:flex;align-items:center;justify-content:center;color:${st.color};flex-shrink:0;margin-top:2px;">🔧</div><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:4px;"><span style="font-weight:700;font-size:13px;font-family:'DM Mono',monospace;">${esc(m.name)}</span><span class="pm-badge" style="background:${st.bg};color:${st.color};border:1px solid ${st.color}44;">${st.label}</span>${m.machine?`<span style="font-size:11px;background:var(--sur2);color:var(--tx2);padding:2px 7px;border-radius:6px;">${esc(m.machine)}</span>`:''}</div>${isNotSet?`<div style="color:var(--tx2);font-size:11px;font-style:italic;">No scheduled weeks${role==='admin'?' — click ✏ to configure':''}</div>`:`<div style="display:flex;gap:5px;flex-wrap:wrap;">${chips}</div>`}${actionBtns}</div></div></div>`;
 }
 
 /* ══════════════════════════════════════════
@@ -1868,28 +1318,8 @@ function pmFullMoldRow(m){
 function renderPMCalendar(){
   const qtrs=[...new Set(CALENDAR.map(w=>w.qtr))];
   document.getElementById('pm-qtr-tabs').innerHTML=qtrs.map(q=>`<button onclick="pmSetQtr('${q}')" class="qtr-btn${pmActiveQtr===q?' active':''}">${q}</button>`).join('');
-  const qtrWeeks=CALENDAR.filter(w=>w.qtr===pmActiveQtr);const months=[...new Set(qtrWeeks.map(w=>w.mth))];
-  document.getElementById('pm-calendar-content').innerHTML=months.map(mth=>{
-    const mthWeeks=qtrWeeks.filter(w=>w.mth===mth);
-    return`<div style="margin-bottom:22px;">
-      <div style="color:var(--tx2);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">${mth}</div>
-      <div style="display:grid;gap:8px;">${mthWeeks.map(w=>{
-        const scheduled=pmMolds.filter(m=>(m.scheduledWeeks||[]).includes(w.wkNum));const isCur=w.wk===CURRENT_WK;
-        const badges=scheduled.length?scheduled.map(m=>{const done=pmIsSlotDone(m.id,w.wkNum);const fwk=600+w.wkNum;let color='#9CA3AF';if(done)color='#30D158';else if(fwk<CURRENT_WK)color='#FF3B30';else if(fwk===CURRENT_WK)color='#FF9500';else if(fwk===CURRENT_WK+1)color='#FFCC00';return`<span style="background:${color}18;color:${color};font-size:11px;font-weight:600;padding:2px 8px;border-radius:16px;border:1px solid ${color}44;font-family:'DM Mono',monospace;white-space:nowrap;">${esc(m.name)}${done?' ✓':''}</span>`;}).join(''):`<span style="color:var(--tx2);font-size:12px;">No PM scheduled</span>`;
-        return`<div class="pm-cal-week${isCur?' current-wk':''}">
-          <div style="text-align:center;min-width:50px;">
-            <div style="color:${isCur?'var(--pm-acc)':'var(--tx2)'};font-size:10px;font-weight:700;letter-spacing:1px;">WK${w.wk}</div>
-            <div style="color:${isCur?'var(--pm-acc)':'var(--tx)'};font-size:18px;font-weight:900;font-family:'Barlow Condensed',monospace;line-height:1.1;">Wk${w.wkNum}</div>
-            ${isCur?`<div style="color:var(--pm-acc);font-size:9px;font-weight:700;letter-spacing:1px;">NOW</div>`:''}
-          </div>
-          <div style="flex:1;min-width:0;">
-            <div style="color:var(--tx2);font-size:11px;margin-bottom:6px;">Sun ${w.sun} – Sat ${w.sat} · ${w.period}</div>
-            <div style="display:flex;gap:4px;flex-wrap:wrap;">${badges}</div>
-          </div>
-        </div>`;
-      }).join('')}</div>
-    </div>`;
-  }).join('');
+  const qtrWeeks=CALENDAR.filter(w=>w.qtr===pmActiveQtr),months=[...new Set(qtrWeeks.map(w=>w.mth))];
+  document.getElementById('pm-calendar-content').innerHTML=months.map(mth=>{const mthWeeks=qtrWeeks.filter(w=>w.mth===mth);return`<div style="margin-bottom:22px;"><div style="color:var(--tx2);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">${mth}</div><div style="display:grid;gap:8px;">${mthWeeks.map(w=>{const scheduled=pmMolds.filter(m=>(m.scheduledWeeks||[]).includes(w.wkNum));const isCur=w.wk===CURRENT_WK;const badges=scheduled.length?scheduled.map(m=>{const done=pmIsSlotDone(m.id,w.wkNum);const fwk=600+w.wkNum;let color='#9CA3AF';if(done)color='#30D158';else if(fwk<CURRENT_WK)color='#FF3B30';else if(fwk===CURRENT_WK)color='#FF9500';else if(fwk===CURRENT_WK+1)color='#FFCC00';return`<span style="background:${color}18;color:${color};font-size:11px;font-weight:600;padding:2px 8px;border-radius:16px;border:1px solid ${color}44;font-family:'DM Mono',monospace;white-space:nowrap;">${esc(m.name)}${done?' ✓':''}</span>`;}).join(''):`<span style="color:var(--tx2);font-size:12px;">No PM scheduled</span>`;return`<div class="pm-cal-week${isCur?' current-wk':''}"><div style="text-align:center;min-width:50px;"><div style="color:${isCur?'var(--pm-acc)':'var(--tx2)'};font-size:10px;font-weight:700;letter-spacing:1px;">WK${w.wk}</div><div style="color:${isCur?'var(--pm-acc)':'var(--tx)'};font-size:18px;font-weight:900;font-family:'Barlow Condensed',monospace;line-height:1.1;">Wk${w.wkNum}</div>${isCur?`<div style="color:var(--pm-acc);font-size:9px;font-weight:700;letter-spacing:1px;">NOW</div>`:''}</div><div style="flex:1;min-width:0;"><div style="color:var(--tx2);font-size:11px;margin-bottom:6px;">Sun ${w.sun} – Sat ${w.sat} · ${w.period}</div><div style="display:flex;gap:4px;flex-wrap:wrap;">${badges}</div></div></div>`;}).join('')}</div></div>`;}).join('');
 }
 function pmSetQtr(q){pmActiveQtr=q;renderPMCalendar();}
 
@@ -1897,32 +1327,13 @@ function pmSetQtr(q){pmActiveQtr=q;renderPMCalendar();}
    PM HISTORY
 ══════════════════════════════════════════ */
 function renderPMHistory(){
-  const search=(document.getElementById('pm-history-search')||{}).value||'';
-  const wkFilter=(document.getElementById('pm-hist-wk')||{}).value||'';
-  const filtered=pmHistory.filter(h=>{
-    const q=search.toLowerCase();
-    const matchS=!q||(h.moldName||'').toLowerCase().includes(q)||(h.doneBy||'').toLowerCase().includes(q)||(h.notes||'').toLowerCase().includes(q);
-    const matchW=!wkFilter||String(h.fiscalWeek||'').includes(wkFilter)||String(h.scheduledWkNum||'').includes(wkFilter);
-    return matchS&&matchW;
-  });
+  const search=(document.getElementById('pm-history-search')||{}).value||'',wkFilter=(document.getElementById('pm-hist-wk')||{}).value||'';
+  const filtered=pmHistory.filter(h=>{const q=search.toLowerCase();const matchS=!q||(h.moldName||'').toLowerCase().includes(q)||(h.doneBy||'').toLowerCase().includes(q)||(h.notes||'').toLowerCase().includes(q);const matchW=!wkFilter||String(h.fiscalWeek||'').includes(wkFilter)||String(h.scheduledWkNum||'').includes(wkFilter);return matchS&&matchW;});
   const el=document.getElementById('pm-history-list');
   document.getElementById('pm-history-count').textContent=filtered.length===pmHistory.length?`${pmHistory.length} records`:`${filtered.length} of ${pmHistory.length}`;
   if(!pmHistory.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><h4>No PM history yet</h4></div>';return;}
   if(!filtered.length){el.innerHTML='<div class="empty"><div class="ei">🔍</div><h4>No records match</h4></div>';return;}
-  el.innerHTML=[...filtered].reverse().map(h=>`<div class="pm-hist-row" style="border-left:3px solid #30D158;flex-wrap:wrap;gap:10px;align-items:flex-start;">
-    <div style="width:32px;height:32px;border-radius:8px;background:#30D15822;display:flex;align-items:center;justify-content:center;color:#30D158;flex-shrink:0;font-size:14px;">✓</div>
-    <div style="flex:1;min-width:160px;">
-      <div style="font-weight:700;font-family:'DM Mono',monospace;font-size:12px;">${esc(h.moldName)}</div>
-      ${h.moldGroup?`<div style="color:var(--tx2);font-size:11px;">${esc(h.moldGroup)}</div>`:''}
-      <div style="color:var(--tx2);font-size:11px;margin-top:2px;">Scheduled: <b style="color:var(--tx);">Week ${h.scheduledWkNum||'—'}</b>${h.fiscalWeek?' (WK'+h.fiscalWeek+')':''}</div>
-      ${h.notes?`<div style="color:var(--tx2);font-size:11px;margin-top:3px;font-style:italic;">"${esc(h.notes)}"</div>`:''}
-    </div>
-    <div style="text-align:right;flex-shrink:0;">
-      <div style="color:#30D158;font-size:12px;font-weight:600;">PM Completed</div>
-      <div style="color:var(--tx);font-size:12px;margin-top:1px;">${esc(h.doneDate||'—')}</div>
-      <div style="color:var(--tx2);font-size:11px;margin-top:1px;">By: <b style="color:var(--tx2);">${esc(h.doneBy||'—')}</b></div>
-    </div>
-  </div>`).join('');
+  el.innerHTML=[...filtered].reverse().map(h=>`<div class="pm-hist-row" style="border-left:3px solid #30D158;flex-wrap:wrap;gap:10px;align-items:flex-start;"><div style="width:32px;height:32px;border-radius:8px;background:#30D15822;display:flex;align-items:center;justify-content:center;color:#30D158;flex-shrink:0;font-size:14px;">✓</div><div style="flex:1;min-width:160px;"><div style="font-weight:700;font-family:'DM Mono',monospace;font-size:12px;">${esc(h.moldName)}</div>${h.moldGroup?`<div style="color:var(--tx2);font-size:11px;">${esc(h.moldGroup)}</div>`:''}<div style="color:var(--tx2);font-size:11px;margin-top:2px;">Scheduled: <b style="color:var(--tx);">Week ${h.scheduledWkNum||'—'}</b>${h.fiscalWeek?' (WK'+h.fiscalWeek+')':''}</div>${h.notes?`<div style="color:var(--tx2);font-size:11px;margin-top:3px;font-style:italic;">"${esc(h.notes)}"</div>`:''}</div><div style="text-align:right;flex-shrink:0;"><div style="color:#30D158;font-size:12px;font-weight:600;">PM Completed</div><div style="color:var(--tx);font-size:12px;margin-top:1px;">${esc(h.doneDate||'—')}</div><div style="color:var(--tx2);font-size:11px;margin-top:1px;">By: <b style="color:var(--tx2);">${esc(h.doneBy||'—')}</b></div></div></div>`).join('');
 }
 function clearPMHistFilters(){const s=document.getElementById('pm-history-search');if(s)s.value='';const w=document.getElementById('pm-hist-wk');if(w)w.value='';renderPMHistory();}
 
@@ -1933,175 +1344,49 @@ function renderPMUsers(){
   document.getElementById('pm-user-count').textContent=pmUsers.length+' technician'+(pmUsers.length!==1?'s':'');
   const el=document.getElementById('pm-users-list');
   if(!pmUsers.length){el.innerHTML='<div class="empty"><div class="ei">👤</div><h4>No technicians yet</h4></div>';return;}
-  el.innerHTML=pmUsers.map((u,i)=>`<div style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:13px 15px;display:flex;align-items:center;gap:12px;">
-    <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#3B82F6,#1D4ED8);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;flex-shrink:0;text-transform:uppercase;">${u.name.charAt(0)}</div>
-    <div style="flex:1;"><div style="font-weight:700;font-size:14px;">${esc(u.name)}</div><div style="color:var(--tx2);font-size:11px;margin-top:2px;">Added ${u.addedAt||'—'}</div></div>
-    ${role==='admin'?`<button onclick="pmDeleteUser(${i})" style="background:rgba(218,54,51,.12);border:1px solid rgba(218,54,51,.3);color:var(--red);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;font-weight:600;">🗑 Remove</button>`:''}
-  </div>`).join('');
+  el.innerHTML=pmUsers.map((u,i)=>`<div style="background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:13px 15px;display:flex;align-items:center;gap:12px;"><div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#3B82F6,#1D4ED8);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;flex-shrink:0;text-transform:uppercase;">${u.name.charAt(0)}</div><div style="flex:1;"><div style="font-weight:700;font-size:14px;">${esc(u.name)}</div><div style="color:var(--tx2);font-size:11px;margin-top:2px;">Added ${u.addedAt||'—'}</div></div>${role==='admin'?`<button onclick="pmDeleteUser(${i})" style="background:rgba(218,54,51,.12);border:1px solid rgba(218,54,51,.3);color:var(--red);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;font-weight:600;">🗑 Remove</button>`:''}</div>`).join('');
 }
-async function pmAddUser(){
-  const inp=document.getElementById('pm-new-user');const name=inp.value.trim();if(!name){inp.focus();return;}
-  if(pmUsers.some(u=>u.name.toLowerCase()===name.toLowerCase())){toast('⚠️ Already exists.');return;}
-  const addedAt=new Date().toLocaleDateString('en-MY');
-  const newUser={name,addedAt};
-  const r=await pmAtomicCall('pmAddUser',{userName:name,userAddedAt:addedAt});
-  if(r&&r.status==='ok'){pmUsers.push(newUser);inp.value='';renderPMUsers();}
-  else if(r&&r.message==='Already exists'){toast('⚠️ Already exists.');}
-}
-async function pmDeleteUser(idx){
-  const u=pmUsers[idx];if(!confirm('Remove "'+u.name+'"?'))return;
-  const r=await pmAtomicCall('pmDeleteUser',{name:u.name});
-  if(r&&r.status==='ok'){pmUsers.splice(idx,1);renderPMUsers();}
-}
+async function pmAddUser(){const inp=document.getElementById('pm-new-user');const name=inp.value.trim();if(!name){inp.focus();return;}if(pmUsers.some(u=>u.name.toLowerCase()===name.toLowerCase())){toast('⚠️ Already exists.');return;}const addedAt=new Date().toLocaleDateString('en-MY');const newUser={name,addedAt};const r=await pmAtomicCall('pmAddUser',{userName:name,userAddedAt:addedAt});if(r&&r.status==='ok'){pmUsers.push(newUser);inp.value='';renderPMUsers();}else if(r&&r.message==='Already exists'){toast('⚠️ Already exists.');}}
+async function pmDeleteUser(idx){const u=pmUsers[idx];if(!confirm('Remove "'+u.name+'"?'))return;const r=await pmAtomicCall('pmDeleteUser',{name:u.name});if(r&&r.status==='ok'){pmUsers.splice(idx,1);renderPMUsers();}}
 
 /* ══════════════════════════════════════════
    PM WEEK TAGS UI
 ══════════════════════════════════════════ */
-function populatePMWeekSelects(){
-  ['pmAddWeekSel','pmEditWeekSel'].forEach(selId=>{
-    const sel=document.getElementById(selId);if(!sel)return;
-    sel.innerHTML=`<option value="">— Select week number —</option>`;
-    for(let i=1;i<=52;i++){const cal=CALENDAR.find(w=>w.wkNum===i);const label=cal?`Week ${i} — ${cal.mth} (WK${cal.wk})`:`Week ${i}`;sel.innerHTML+=`<option value="${i}">${label}</option>`;}
-  });
-}
-function pmRenderWeekTags(formId,state){
-  const container=document.getElementById(`pm${formId.charAt(0).toUpperCase()+formId.slice(1)}WeekTags`);if(!container)return;
-  if(!state.length){container.innerHTML=`<span style="color:var(--tx2);font-size:12px;">No weeks added yet</span>`;return;}
-  const sorted=[...state].sort((a,b)=>a-b);
-  container.innerHTML=sorted.map(n=>{const cal=CALENDAR.find(w=>w.wkNum===n);const mthLabel=cal?' '+cal.mth:'';return`<span class="pm-wk-chip">Week ${n}${mthLabel} <button class="wk-chip-rm" onclick="pmRemoveWeekTag('${formId}',${n})">×</button></span>`;}).join('');
-}
-function pmAddWeekTag(formId){
-  const selId=formId==='add'?'pmAddWeekSel':'pmEditWeekSel';
-  const sel=document.getElementById(selId);const val=parseInt(sel.value);if(!val)return;
-  const state=formId==='add'?pmAddWeekState:pmEditWeekState;
-  if(state.includes(val)){toast('Week '+val+' already added.');return;}
-  if(formId==='add')pmAddWeekState.push(val);else pmEditWeekState.push(val);
-  sel.value='';pmRenderWeekTags(formId,formId==='add'?pmAddWeekState:pmEditWeekState);
-}
-function pmRemoveWeekTag(formId,wkNum){
-  if(formId==='add')pmAddWeekState=pmAddWeekState.filter(n=>n!==wkNum);
-  else pmEditWeekState=pmEditWeekState.filter(n=>n!==wkNum);
-  pmRenderWeekTags(formId,formId==='add'?pmAddWeekState:pmEditWeekState);
-}
+function populatePMWeekSelects(){['pmAddWeekSel','pmEditWeekSel'].forEach(selId=>{const sel=document.getElementById(selId);if(!sel)return;sel.innerHTML=`<option value="">— Select week number —</option>`;for(let i=1;i<=52;i++){const cal=CALENDAR.find(w=>w.wkNum===i);const label=cal?`Week ${i} — ${cal.mth} (WK${cal.wk})`:`Week ${i}`;sel.innerHTML+=`<option value="${i}">${label}</option>`;}});}
+function pmRenderWeekTags(formId,state){const container=document.getElementById(`pm${formId.charAt(0).toUpperCase()+formId.slice(1)}WeekTags`);if(!container)return;if(!state.length){container.innerHTML=`<span style="color:var(--tx2);font-size:12px;">No weeks added yet</span>`;return;}const sorted=[...state].sort((a,b)=>a-b);container.innerHTML=sorted.map(n=>{const cal=CALENDAR.find(w=>w.wkNum===n);const mthLabel=cal?' '+cal.mth:'';return`<span class="pm-wk-chip">Week ${n}${mthLabel} <button class="wk-chip-rm" onclick="pmRemoveWeekTag('${formId}',${n})">×</button></span>`;}).join('');}
+function pmAddWeekTag(formId){const selId=formId==='add'?'pmAddWeekSel':'pmEditWeekSel';const sel=document.getElementById(selId);const val=parseInt(sel.value);if(!val)return;const state=formId==='add'?pmAddWeekState:pmEditWeekState;if(state.includes(val)){toast('Week '+val+' already added.');return;}if(formId==='add')pmAddWeekState.push(val);else pmEditWeekState.push(val);sel.value='';pmRenderWeekTags(formId,formId==='add'?pmAddWeekState:pmEditWeekState);}
+function pmRemoveWeekTag(formId,wkNum){if(formId==='add')pmAddWeekState=pmAddWeekState.filter(n=>n!==wkNum);else pmEditWeekState=pmEditWeekState.filter(n=>n!==wkNum);pmRenderWeekTags(formId,formId==='add'?pmAddWeekState:pmEditWeekState);}
 
 /* ══════════════════════════════════════════
    PM ADD / EDIT MOLD MODALS
 ══════════════════════════════════════════ */
-function pmOpenAddModal(){
-  pmAddWeekState=[];populatePMWeekSelects();pmRenderWeekTags('add',pmAddWeekState);
-  ['pmAddName','pmAddGroup','pmAddMachine','pmAddInterval'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  document.getElementById('pmAddMoldMod').classList.add('show');
-}
-async function pmDoAddMold(){
-  const name=document.getElementById('pmAddName').value.trim();
-  if(!name){toast('⚠️ Enter a Mold Die name.');return;}
-  const btn=document.getElementById('pmAddSubmitBtn');btn.disabled=true;btn.textContent='Saving...';
-  const newMold={
-    id:Date.now(),name,
-    group:document.getElementById('pmAddGroup').value.trim(),
-    machine:document.getElementById('pmAddMachine').value.trim(),
-    pmIntervalWeeks:parseInt(document.getElementById('pmAddInterval').value)||null,
-    scheduledWeeks:[...pmAddWeekState]
-  };
-  const r=await pmCallAddMold(newMold);
-  if(r&&r.status==='ok') pmMolds.push(newMold);
-  btn.disabled=false;btn.textContent='Add Mold Die';
-  closeMod('pmAddMoldMod');renderPMMolds();
-  if(r&&r.status==='ok') toast('✅ Mold added & saved to Google Sheets!');
-}
-function pmOpenEditModal(id){
-  const m=pmMolds.find(x=>x.id===id);if(!m)return;
-  document.getElementById('pmEditId').value=id;
-  document.getElementById('pmEditName').value=m.name;
-  document.getElementById('pmEditGroup').value=m.group||'';
-  document.getElementById('pmEditMachine').value=m.machine||'';
-  document.getElementById('pmEditInterval').value=m.pmIntervalWeeks!=null?m.pmIntervalWeeks:'';
-  pmEditWeekState=[...(m.scheduledWeeks||[])];
-  populatePMWeekSelects();pmRenderWeekTags('edit',pmEditWeekState);
-  document.getElementById('pmEditMoldMod').classList.add('show');
-}
-async function pmDoEditMold(){
-  const id=parseInt(document.getElementById('pmEditId').value);
-  const btn=document.getElementById('pmEditSubmitBtn');btn.disabled=true;btn.textContent='Saving...';
-  const intVal=document.getElementById('pmEditInterval').value;
-  const existing=pmMolds.find(x=>x.id===id)||{};
-  const updatedMold={...existing,
-    name:document.getElementById('pmEditName').value.trim(),
-    group:document.getElementById('pmEditGroup').value.trim(),
-    machine:document.getElementById('pmEditMachine').value.trim(),
-    pmIntervalWeeks:intVal?parseInt(intVal):null,
-    scheduledWeeks:[...pmEditWeekState]
-  };
-  const r=await pmCallUpdateMold(updatedMold);
-  if(r&&r.status==='ok') pmMolds=pmMolds.map(x=>x.id===id?updatedMold:x);
-  btn.disabled=false;btn.textContent='Save Changes';
-  closeMod('pmEditMoldMod');renderPMMolds();
-  if(r&&r.status==='ok') toast('✅ Saved to Google Sheets!');
-}
-async function pmDeleteMold(id){
-  if(!confirm('Delete this mold die? This cannot be undone.'))return;
-  const r=await pmAtomicCall('pmDeleteMold',{moldId:id});
-  if(r&&r.status==='ok') pmMolds=pmMolds.filter(x=>x.id!==id);
-  renderPMMolds();renderPMDashboard();
-  if(r&&r.status==='ok') toast('🗑️ Deleted from Google Sheets.');
-}
+function pmOpenAddModal(){pmAddWeekState=[];populatePMWeekSelects();pmRenderWeekTags('add',pmAddWeekState);['pmAddName','pmAddGroup','pmAddMachine','pmAddInterval'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('pmAddMoldMod').classList.add('show');}
+async function pmDoAddMold(){const name=document.getElementById('pmAddName').value.trim();if(!name){toast('⚠️ Enter a Mold Die name.');return;}const btn=document.getElementById('pmAddSubmitBtn');btn.disabled=true;btn.textContent='Saving...';const newMold={id:Date.now(),name,group:document.getElementById('pmAddGroup').value.trim(),machine:document.getElementById('pmAddMachine').value.trim(),pmIntervalWeeks:parseInt(document.getElementById('pmAddInterval').value)||null,scheduledWeeks:[...pmAddWeekState]};const r=await pmCallAddMold(newMold);if(r&&r.status==='ok')pmMolds.push(newMold);btn.disabled=false;btn.textContent='Add Mold Die';closeMod('pmAddMoldMod');renderPMMolds();if(r&&r.status==='ok')toast('✅ Mold added & saved to Google Sheets!');}
+function pmOpenEditModal(id){const m=pmMolds.find(x=>x.id===id);if(!m)return;document.getElementById('pmEditId').value=id;document.getElementById('pmEditName').value=m.name;document.getElementById('pmEditGroup').value=m.group||'';document.getElementById('pmEditMachine').value=m.machine||'';document.getElementById('pmEditInterval').value=m.pmIntervalWeeks!=null?m.pmIntervalWeeks:'';pmEditWeekState=[...(m.scheduledWeeks||[])];populatePMWeekSelects();pmRenderWeekTags('edit',pmEditWeekState);document.getElementById('pmEditMoldMod').classList.add('show');}
+async function pmDoEditMold(){const id=parseInt(document.getElementById('pmEditId').value);const btn=document.getElementById('pmEditSubmitBtn');btn.disabled=true;btn.textContent='Saving...';const intVal=document.getElementById('pmEditInterval').value;const existing=pmMolds.find(x=>x.id===id)||{};const updatedMold={...existing,name:document.getElementById('pmEditName').value.trim(),group:document.getElementById('pmEditGroup').value.trim(),machine:document.getElementById('pmEditMachine').value.trim(),pmIntervalWeeks:intVal?parseInt(intVal):null,scheduledWeeks:[...pmEditWeekState]};const r=await pmCallUpdateMold(updatedMold);if(r&&r.status==='ok')pmMolds=pmMolds.map(x=>x.id===id?updatedMold:x);btn.disabled=false;btn.textContent='Save Changes';closeMod('pmEditMoldMod');renderPMMolds();if(r&&r.status==='ok')toast('✅ Saved to Google Sheets!');}
+async function pmDeleteMold(id){if(!confirm('Delete this mold die? This cannot be undone.'))return;const r=await pmAtomicCall('pmDeleteMold',{moldId:id});if(r&&r.status==='ok')pmMolds=pmMolds.filter(x=>x.id!==id);renderPMMolds();renderPMDashboard();if(r&&r.status==='ok')toast('🗑️ Deleted from Google Sheets.');}
 
 /* ══════════════════════════════════════════
    PM MARK DONE MODAL
 ══════════════════════════════════════════ */
 function pmOpenDoneModal(id){
-  const m=pmMolds.find(x=>x.id===id);if(!m)return;
-  const st=pmGetMoldStatus(m);pmDoneMoldId=id;
-  document.getElementById('pmDoneMoldName').textContent=m.name;
-  document.getElementById('pmDoneDate').value='';
-  document.getElementById('pmDoneNotes').value='';
-  const personSel=document.getElementById('pmDonePerson');
-  personSel.innerHTML='<option value="">— Select technician —</option>';
-  if(!pmUsers.length)personSel.innerHTML+='<option disabled>No users yet — add in Users tab</option>';
-  else pmUsers.forEach(u=>personSel.innerHTML+=`<option value="${esc(u.name)}">${esc(u.name)}</option>`);
-  const sel=document.getElementById('pmDoneSchedWk');sel.innerHTML='';
-  const pendingSlots=(st.slots||[]).filter(s=>s.slotStatus!=='DONE');
-  if(!pendingSlots.length)sel.innerHTML='<option value="">All scheduled PMs done ✓</option>';
-  else pendingSlots.forEach(s=>{const cal=getWk(s.fwk);const statusLabel={OVERDUE:' ⚠ OVERDUE',"DUE NOW":' 🔧 DUE NOW',"DUE SOON":' ⏰ DUE SOON',UPCOMING:''}[s.slotStatus]||'';sel.innerHTML+=`<option value="${s.wkNum}">Week ${s.wkNum}${cal?' — '+cal.mth+' (WK'+s.fwk+')':''}${statusLabel}</option>`;});
-  document.getElementById('pmDoneDueInfo').textContent=pendingSlots.length?`${pendingSlots.length} pending slot${pendingSlots.length>1?'s':''}`:'' ;
-  document.getElementById('pmDoneMod').classList.add('show');
-  setTimeout(()=>document.getElementById('pmDoneDate').focus(),100);
+  const m=pmMolds.find(x=>x.id===id);if(!m)return;const st=pmGetMoldStatus(m);pmDoneMoldId=id;
+  document.getElementById('pmDoneMoldName').textContent=m.name;document.getElementById('pmDoneDate').value='';document.getElementById('pmDoneNotes').value='';
+  const personSel=document.getElementById('pmDonePerson');personSel.innerHTML='<option value="">— Select technician —</option>';
+  if(!pmUsers.length)personSel.innerHTML+='<option disabled>No users yet — add in Users tab</option>';else pmUsers.forEach(u=>personSel.innerHTML+=`<option value="${esc(u.name)}">${esc(u.name)}</option>`);
+  const sel=document.getElementById('pmDoneSchedWk');sel.innerHTML='';const pendingSlots=(st.slots||[]).filter(s=>s.slotStatus!=='DONE');
+  if(!pendingSlots.length)sel.innerHTML='<option value="">All scheduled PMs done ✓</option>';else pendingSlots.forEach(s=>{const cal=getWk(s.fwk);const statusLabel={OVERDUE:' ⚠ OVERDUE',"DUE NOW":' 🔧 DUE NOW',"DUE SOON":' ⏰ DUE SOON',UPCOMING:''}[s.slotStatus]||'';sel.innerHTML+=`<option value="${s.wkNum}">Week ${s.wkNum}${cal?' — '+cal.mth+' (WK'+s.fwk+')':''}${statusLabel}</option>`;});
+  document.getElementById('pmDoneDueInfo').textContent=pendingSlots.length?`${pendingSlots.length} pending slot${pendingSlots.length>1?'s':''}`:'';
+  document.getElementById('pmDoneMod').classList.add('show');setTimeout(()=>document.getElementById('pmDoneDate').focus(),100);
 }
 async function pmConfirmDone(){
   const id=pmDoneMoldId;if(!id)return;const m=pmMolds.find(x=>x.id===id);if(!m)return;
-  const dateVal=document.getElementById('pmDoneDate').value;
-  const person=document.getElementById('pmDonePerson').value;
-  const notes=document.getElementById('pmDoneNotes').value.trim();
-  const wkNumVal=parseInt(document.getElementById('pmDoneSchedWk').value);
-  if(!dateVal){toast('⚠️ Please enter the PM date.');return;}
-  if(!person){toast('⚠️ Please select a technician.');return;}
-  if(!wkNumVal){toast('⚠️ Please select the scheduled week.');return;}
+  const dateVal=document.getElementById('pmDoneDate').value,person=document.getElementById('pmDonePerson').value,notes=document.getElementById('pmDoneNotes').value.trim(),wkNumVal=parseInt(document.getElementById('pmDoneSchedWk').value);
+  if(!dateVal){toast('⚠️ Please enter the PM date.');return;}if(!person){toast('⚠️ Please select a technician.');return;}if(!wkNumVal){toast('⚠️ Please select the scheduled week.');return;}
   const btn=document.getElementById('pmDoneConfirmBtn');btn.textContent='Saving...';btn.disabled=true;
-  const histEntry={
-    moldId:id,moldName:m.name,moldGroup:m.group||'',
-    scheduledWkNum:wkNumVal,fiscalYear:26,fiscalWeek:600+wkNumVal,
-    doneDate:dateVal,doneBy:person||'—',notes:notes||'',
-    recordedAt:new Date().toLocaleDateString('en-MY'),source:'manual'
-  };
-  // Pass flat individual params — no JSON blob in URL
-  const r=await pmAtomicCall('pmAppendHistory',{
-    hMoldId:     String(id),
-    hMoldName:   m.name,
-    hMoldGroup:  m.group||'',
-    hSchedWkNum: String(wkNumVal),
-    hFiscalYear: '26',
-    hFiscalWeek: String(600+wkNumVal),
-    hDoneDate:   dateVal,
-    hDoneBy:     person||'',
-    hNotes:      notes||'',
-    hRecordedAt: new Date().toLocaleDateString('en-MY'),
-    hSource:     'manual'
-  });
-  if(r&&r.status==='ok') pmHistory.push(histEntry);
-  btn.textContent='✅ Confirm Done';btn.disabled=false;
-  closeMod('pmDoneMod');
-  renderPMDashboard();renderPMMolds();renderPMHistory();
-  if(r&&r.status==='ok') toast('✅ PM marked done & saved to Google Sheets!');
+  const histEntry={moldId:id,moldName:m.name,moldGroup:m.group||'',scheduledWkNum:wkNumVal,fiscalYear:26,fiscalWeek:600+wkNumVal,doneDate:dateVal,doneBy:person||'—',notes:notes||'',recordedAt:new Date().toLocaleDateString('en-MY'),source:'manual'};
+  const r=await pmAtomicCall('pmAppendHistory',{hMoldId:String(id),hMoldName:m.name,hMoldGroup:m.group||'',hSchedWkNum:String(wkNumVal),hFiscalYear:'26',hFiscalWeek:String(600+wkNumVal),hDoneDate:dateVal,hDoneBy:person||'',hNotes:notes||'',hRecordedAt:new Date().toLocaleDateString('en-MY'),hSource:'manual'});
+  if(r&&r.status==='ok')pmHistory.push(histEntry);btn.textContent='✅ Confirm Done';btn.disabled=false;closeMod('pmDoneMod');renderPMDashboard();renderPMMolds();renderPMHistory();if(r&&r.status==='ok')toast('✅ PM marked done & saved to Google Sheets!');
 }
 
 /* ══════════════════════════════════════════
