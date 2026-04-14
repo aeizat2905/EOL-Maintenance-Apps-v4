@@ -1376,7 +1376,7 @@ function pmOpenDoneModal(id){
   if(!pmUsers.length)personSel.innerHTML+='<option disabled>No users yet — add in Users tab</option>';else pmUsers.forEach(u=>personSel.innerHTML+=`<option value="${esc(u.name)}">${esc(u.name)}</option>`);
   const sel=document.getElementById('pmDoneSchedWk');sel.innerHTML='';const pendingSlots=(st.slots||[]).filter(s=>s.slotStatus!=='DONE');
   if(!pendingSlots.length)sel.innerHTML='<option value="">All scheduled PMs done ✓</option>';else pendingSlots.forEach(s=>{const cal=getWk(s.fwk);const statusLabel={OVERDUE:' ⚠ OVERDUE',"DUE NOW":' 🔧 DUE NOW',"DUE SOON":' ⏰ DUE SOON',UPCOMING:''}[s.slotStatus]||'';sel.innerHTML+=`<option value="${s.wkNum}">Week ${s.wkNum}${cal?' — '+cal.mth+' (WK'+s.fwk+')':''}${statusLabel}</option>`;});
-  document.getElementById('pmDoneDueInfo').textContent=pendingSlots.length?`${pendingSlots.length} pending slot${pendingSlots.length>1?'s':''}`:'';
+  document.getElementById('pmDoneDueInfo').textContent=pendingSlots.length?`${pendingSlots.length} pending slot${pendingSlots.length>1?'s':''}':'';
   document.getElementById('pmDoneMod').classList.add('show');setTimeout(()=>document.getElementById('pmDoneDate').focus(),100);
 }
 async function pmConfirmDone(){
