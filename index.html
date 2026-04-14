@@ -582,7 +582,7 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
 /* ══════════════════════════════════════════
    HARDCODED CONFIG — no setup screen needed
 ══════════════════════════════════════════ */
-const APPURL = 'https://script.google.com/macros/s/AKfycbyBEdHNXFpqkl6MKlppFoQ4HTGhEHAOv7mIpyGnUIsDNzfpAlHLuNsyYfV07J_kuFio/exec';
+const APPURL = 'https://script.google.com/macros/s/AKfycbxT-CjtZG4D2HnXQsBVE0myy4RuPlNqLaeeAoVQJ0wUAM1DOO-YLmPN4vRYqtMh4fNI/exec';
 const IMGBB_KEY='b4ebddea23a53d61e7f2b06ce4f20d8a';
 const MAX_PHOTOS=3,IMG_MAX_PX=1200,IMG_Q=0.80;
 let ADMIN_USER='EOLmaint',ADMIN_PASS='EOLmaint';
@@ -1376,7 +1376,7 @@ function pmOpenDoneModal(id){
   if(!pmUsers.length)personSel.innerHTML+='<option disabled>No users yet — add in Users tab</option>';else pmUsers.forEach(u=>personSel.innerHTML+=`<option value="${esc(u.name)}">${esc(u.name)}</option>`);
   const sel=document.getElementById('pmDoneSchedWk');sel.innerHTML='';const pendingSlots=(st.slots||[]).filter(s=>s.slotStatus!=='DONE');
   if(!pendingSlots.length)sel.innerHTML='<option value="">All scheduled PMs done ✓</option>';else pendingSlots.forEach(s=>{const cal=getWk(s.fwk);const statusLabel={OVERDUE:' ⚠ OVERDUE',"DUE NOW":' 🔧 DUE NOW',"DUE SOON":' ⏰ DUE SOON',UPCOMING:''}[s.slotStatus]||'';sel.innerHTML+=`<option value="${s.wkNum}">Week ${s.wkNum}${cal?' — '+cal.mth+' (WK'+s.fwk+')':''}${statusLabel}</option>`;});
-  document.getElementById('pmDoneDueInfo').textContent=pendingSlots.length?`${pendingSlots.length} pending slot${pendingSlots.length>1?'s':''}':'';
+  document.getElementById('pmDoneDueInfo').textContent=pendingSlots.length?`${pendingSlots.length} pending slot${pendingSlots.length>1?'s':''}`:'';
   document.getElementById('pmDoneMod').classList.add('show');setTimeout(()=>document.getElementById('pmDoneDate').focus(),100);
 }
 async function pmConfirmDone(){
