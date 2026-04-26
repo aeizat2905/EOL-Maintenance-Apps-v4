@@ -773,18 +773,25 @@ const CALENDAR=[
 ];
 
 function detectCurrentWeek(){
+  // Use Malaysia time (UTC+8)
   const now=new Date();
   const myt=new Date(now.getTime()+(8*60*60*1000));
   const todayY=myt.getUTCFullYear(),todayM=myt.getUTCMonth(),todayD=myt.getUTCDate();
   const MI={JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11};
-  function calYear(m){return(m==='NOV'||m==='DEC')?2025:2026;}
+  // FY2026: NOV/DEC 2025, rest 2026
+  function calYear(mth){return(mth==='NOV'||mth==='DEC')?2025:2026;}
   for(const w of CALENDAR){
     const baseYr=calYear(w.mth),baseMo=MI[w.mth];
-    let sunMo,sunYr,satMo,satYr;
-    if(w.sun>w.sat){sunMo=baseMo-1;sunYr=baseYr;if(sunMo<0){sunMo=11;sunYr--;}satMo=baseMo;satYr=baseYr;}
-    else{sunMo=baseMo;sunYr=baseYr;satMo=baseMo;satYr=baseYr;}
-    const afterSun=(todayY>sunYr)||(todayY===sunYr&&todayM>sunMo)||(todayY===sunYr&&todayM===sunMo&&todayD>=w.sun);
-    const beforeSat=(todayY<satYr)||(todayY===satYr&&todayM<satMo)||(todayY===satYr&&todayM===satMo&&todayD<=w.sat);
+    // When sun > sat, the week STARTS in baseMo and the Saturday OVERFLOWS into next month
+    // e.g. WK626: APR sun=26 ... sat=2(MAY)
+    let sunY=baseYr,sunM=baseMo,satY=baseYr,satM=baseMo;
+    if(w.sun>w.sat){
+      // Saturday is in the next month
+      satM=baseMo+1;
+      if(satM>11){satM=0;satY=baseYr+1;}
+    }
+    const afterSun=(todayY>sunY)||(todayY===sunY&&todayM>sunM)||(todayY===sunY&&todayM===sunM&&todayD>=w.sun);
+    const beforeSat=(todayY<satY)||(todayY===satY&&todayM<satM)||(todayY===satY&&todayM===satM&&todayD<=w.sat);
     if(afterSun&&beforeSat)return w.wk;
   }
   return CALENDAR[CALENDAR.length-1].wk;
@@ -801,9 +808,12 @@ function dateToFiscalWeek(dateStr){
   function calYear(mth){return(mth==='NOV'||mth==='DEC')?2025:2026;}
   for(const w of CALENDAR){
     const baseYr=calYear(w.mth),baseMo=MI[w.mth];
-    let sunY,sunM,satY,satM;
-    if(w.sun>w.sat){sunM=baseMo-1;sunY=baseYr;if(sunM<0){sunM=11;sunY--;}satM=baseMo;satY=baseYr;}
-    else{sunM=baseMo;sunY=baseYr;satM=baseMo;satY=baseYr;}
+    let sunY=baseYr,sunM=baseMo,satY=baseYr,satM=baseMo;
+    if(w.sun>w.sat){
+      // Saturday overflows into next month
+      satM=baseMo+1;
+      if(satM>11){satM=0;satY=baseYr+1;}
+    }
     const afterSun=(y>sunY)||(y===sunY&&m>sunM)||(y===sunY&&m===sunM&&d>=w.sun);
     const beforeSat=(y<satY)||(y===satY&&m<satM)||(y===satY&&m===satM&&d<=w.sat);
     if(afterSun&&beforeSat)return w.wk;
