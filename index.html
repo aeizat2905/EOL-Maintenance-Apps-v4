@@ -457,6 +457,18 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--tx);min-he
           <div style="font-size:11px;color:var(--tx2);margin-top:6px;line-height:1.5;">Applies to equipment logged as Top/Bottom/Both (Mold Die section field). Multiple selections allowed.</div>
         </div>
 
+        <!-- PM Activity Filter -->
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx2);margin-bottom:8px;">PM Activity</div>
+          <div class="section-filter-wrap" id="activityFilterWrap">
+            <div class="section-pill sel-all" data-activity="all" onclick="toggleActivityPill(this)">📋 All Activities</div>
+            <div class="section-pill" data-activity="assemble" onclick="toggleActivityPill(this)">🔩 Assemble</div>
+            <div class="section-pill" data-activity="dismantle" onclick="toggleActivityPill(this)">🔧 Dismantle</div>
+            <div class="section-pill" data-activity="changepart" onclick="toggleActivityPill(this)">🔄 Change Part</div>
+            <div class="section-pill" data-activity="none" onclick="toggleActivityPill(this)">🔲 Not Set</div>
+          </div>
+        </div>
+
         <!-- Equipment Multi-select -->
         <div style="margin-bottom:10px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
@@ -696,6 +708,7 @@ let pmIsSaving=false;
 /* ── REPORT FILTER STATE ── */
 let rptSelectedEquip=new Set(); // multi-select equipment
 let rptSelectedSections=new Set(['all']); // section filter
+let rptSelectedActivities=new Set(['all']); // activity filter
 
 /* ══════════════════════════════════════════
    PM SCHEDULER TYPES
@@ -998,7 +1011,7 @@ async function doLogin(){
 function doLogout(){
   role=null;sRole=null;recs=[];pics=[];types=[];departments=[];photoQueue=[];
   pmMolds=[];pmHistory=[];pmUsers=[];curDept=null;currentModule=null;currentSchedType=null;
-  rptSelectedEquip=new Set();rptSelectedSections=new Set(['all']);
+  rptSelectedEquip=new Set();rptSelectedSections=new Set(['all']);rptSelectedActivities=new Set(['all']);
   selectedActivity=null;editSelectedActivity=null;
   ['aUser','aPass'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('loginErr').style.display='none';
@@ -1459,6 +1472,7 @@ function fillReportFilters(){
   rm.value=svm;
   buildEquipChips(sv);
   renderSectionPills();
+  renderActivityPills();
 }
 
 function renderSectionPills(){
@@ -1470,6 +1484,37 @@ function renderSectionPills(){
       else if(s==='top')p.classList.add('sel-top');
       else if(s==='bottom')p.classList.add('sel-bottom');
       else if(s==='both')p.classList.add('sel-both');
+      else p.classList.add('sel');
+    }
+  });
+}
+
+function toggleActivityPill(el){
+  const act=el.dataset.activity;
+  if(act==='all'){
+    rptSelectedActivities=new Set(['all']);
+  } else {
+    rptSelectedActivities.delete('all');
+    if(rptSelectedActivities.has(act)){
+      rptSelectedActivities.delete(act);
+      if(rptSelectedActivities.size===0)rptSelectedActivities.add('all');
+    } else {
+      rptSelectedActivities.add(act);
+    }
+  }
+  renderActivityPills();
+  renderReport();
+}
+
+function renderActivityPills(){
+  document.querySelectorAll('#activityFilterWrap .section-pill').forEach(p=>{
+    const a=p.dataset.activity;
+    p.className='section-pill';
+    if(rptSelectedActivities.has(a)){
+      if(a==='all')p.classList.add('sel-all');
+      else if(a==='assemble')p.classList.add('sel-top');     // green
+      else if(a==='dismantle')p.classList.add('sel-bottom'); // purple
+      else if(a==='changepart')p.classList.add('sel-both');  // amber
       else p.classList.add('sel');
     }
   });
@@ -1487,8 +1532,10 @@ function clearRptFilters(){
   rptFreqDept='';rptHistDept='';
   rptSelectedEquip.clear();
   rptSelectedSections=new Set(['all']);
+  rptSelectedActivities=new Set(['all']);
   buildEquipChips('');
   renderSectionPills();
+  renderActivityPills();
   updateEquipCount();
   renderReport();
 }
@@ -1525,6 +1572,13 @@ function getFilteredRecs(){
     }
     // section filter
     if(!recordMatchesSection(r))return false;
+    // activity filter
+    if(!rptSelectedActivities.has('all')){
+      const act=r.pmActivity||'';
+      if(rptSelectedActivities.has('none')&&!act)return true;
+      if(act&&rptSelectedActivities.has(act))return true;
+      return false;
+    }
     return true;
   });
 }
@@ -1539,6 +1593,11 @@ function renderActiveFilterBar(){
   if(!rptSelectedSections.has('all')){
     const secLabels=[...rptSelectedSections].map(s=>s==='none'?'No Section':s.charAt(0).toUpperCase()+s.slice(1)).join(', ');
     tags.push({label:'Section: '+secLabels,clear:()=>{rptSelectedSections=new Set(['all']);renderSectionPills();renderReport();}});
+  }
+  if(!rptSelectedActivities.has('all')){
+    const actMap={assemble:'Assemble',dismantle:'Dismantle',changepart:'Change Part',none:'Not Set'};
+    const actLabels=[...rptSelectedActivities].map(a=>actMap[a]||a).join(', ');
+    tags.push({label:'Activity: '+actLabels,clear:()=>{rptSelectedActivities=new Set(['all']);renderActivityPills();renderReport();}});
   }
   const pic=document.getElementById('rFpic')?.value;
   if(pic)tags.push({label:'PIC: '+pic,clear:()=>{document.getElementById('rFpic').value='';renderReport();}});
